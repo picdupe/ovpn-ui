@@ -46,11 +46,15 @@ get_latest_nginx_version() {
 }
 
 get_latest_openvpn_version() {
-    log "检测最新 OpenVPN 版本..."
-    OPENVPN_LATEST=$(curl -s https://openvpn.net/download-open-vpn/ | grep -oP 'OpenVPN \K[0-9]+\.[0-9]+\.[0-9]+' | head -1)
+    log "正在检测最新 OpenVPN 版本..."
+    
+    # 方法一：从发布页面解析版本号
+    OPENVPN_LATEST=$(curl -s "https://swupdate.openvpn.org/community/releases/" | grep -oP 'openvpn-\K[0-9]+\.[0-9]+\.[0-9]+' | sort -V | tail -1)
+    
+    # 如果方法一失败，则使用方法二：设置一个已知的稳定版本
     if [ -z "$OPENVPN_LATEST" ]; then
-        OPENVPN_LATEST="2.6.8"  # 默认版本
-        warning "无法检测OpenVPN最新版本，使用默认版本: $OPENVPN_LATEST"
+        OPENVPN_LATEST="2.6.16"  # 一个已知的稳定版本[citation:2][citation:10]
+        warning "无法自动检测OpenVPN最新版本，将使用预设稳定版本: $OPENVPN_LATEST"
     else
         log "检测到 OpenVPN 最新版本: $OPENVPN_LATEST"
     fi
