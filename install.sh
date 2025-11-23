@@ -75,24 +75,41 @@ download_with_fallback() {
     local url="$1"
     local output="$2"
     local filename=$(basename "$output")
+    local max_retries=2
+    local retry_count=0
     
-    log "下载 $filename..."
+    while [ $retry_count -lt $max_retries ]; do
+        log "下载尝试 $((retry_count + 1)): $filename"
+        
+        # 清理可能存在的空文件
+        rm -f "$output"
+        
+        # 尝试wget
+        if wget --timeout=30 -O "$output" "$url" >> $LOG_FILE 2>&1; then
+            if [ -s "$output" ]; then
+                local file_size=$(stat -c%s "$output" 2>/dev/null || echo 0)
+                log "✅ $filename 下载成功 ($(numfmt --to=iec $file_size))"
+                return 0
+            fi
+        fi
+        
+        # 尝试curl
+        if curl -fL --connect-timeout 20 -o "$output" "$url" >> $LOG_FILE 2>&1; then
+            if [ -s "$output" ]; then
+                local file_size=$(stat -c%s "$output" 2>/dev/null || echo 0)
+                log "✅ $filename 下载成功 (curl) ($(numfmt --to=iec $file_size))"
+                return 0
+            fi
+        fi
+        
+        retry_count=$((retry_count + 1))
+        if [ $retry_count -lt $max_retries ]; then
+            warning "下载失败，5秒后重试..."
+            sleep 5
+        fi
+    done
     
-    # 主要下载方式
-    if wget --timeout=30 -O "$output" "$url" >> $LOG_FILE 2>&1; then
-        log "✅ $filename 下载成功"
-        return 0
-    fi
-    
-    warning "主要下载源失败，尝试备用源..."
-    
-    # 备用下载方式
-    if curl -fL --connect-timeout 20 -o "$output" "$url" >> $LOG_FILE 2>&1; then
-        log "✅ $filename 下载成功 (备用源)"
-        return 0
-    fi
-    
-    error "下载 $filename 失败"
+    error "❌ $filename 下载失败（已尝试 $max_retries 次）"
     return 1
 }
 
