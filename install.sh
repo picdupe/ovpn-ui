@@ -183,17 +183,29 @@ create_directories() {
 }
 
 download_webui() {
-    log "下载WebUI代码..."
+    log "处理WebUI代码..."
     
-    if [ -d "$INSTALL_DIR/app" ]; then
-        rm -rf $INSTALL_DIR/app
-    fi
-    
-    # 从GitHub克隆代码
-    git clone $REPO_URL $INSTALL_DIR/app >> $LOG_FILE 2>&1
-    
-    if [ ! -f "$INSTALL_DIR/app/requirements.txt" ]; then
-        error "WebUI代码下载失败"
+    if [ -d "$INSTALL_DIR/app" ] && [ -d "$INSTALL_DIR/app/.git" ]; then
+        log "检测到现有Git仓库，尝试更新..."
+        cd "$INSTALL_DIR/app"
+        if git pull origin main >> $LOG_FILE 2>&1; then
+            log "WebUI代码更新成功"
+        else
+            error "WebUI代码更新失败"
+            return 1
+        fi
+    else
+        log "下载WebUI代码..."
+        if [ -d "$INSTALL_DIR/app" ]; then
+            rm -rf "$INSTALL_DIR/app"
+        fi
+        
+        if git clone $REPO_URL "$INSTALL_DIR/app" >> $LOG_FILE 2>&1; then
+            log "WebUI代码下载成功"
+        else
+            error "WebUI代码下载失败"
+            return 1
+        fi
     fi
 }
 
