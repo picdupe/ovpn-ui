@@ -1,0 +1,22 @@
+{
+    "webui": {
+        "host": "0.0.0.0",
+        "port": 5000,
+        "debug": false,
+        "secret_key": "{{ secret_key }}",
+        "session_timeout": 3600
+    },
+    "database": {
+        "path": "/opt/ovpn-ui/data/ovpn-ui.db"
+    },
+    "openvpn": {
+        "config_dir": "/opt/ovpn-ui/config/openvpn",
+        "easy_rsa_dir": "/opt/ovpn-ui/easy-rsa",
+        "log_file": "/var/log/openvpn-status.log"
+    },
+    "security": {
+        "password_min_length": 8,
+        "max_login_attempts": 5,
+        "lockout_time": 900
+    }
+}

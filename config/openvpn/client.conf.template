@@ -1,0 +1,16 @@
+client
+dev tun
+proto udp
+remote {{ server_address }} 1194
+resolv-retry infinite
+nobind
+persist-key
+persist-tun
+remote-cert-tls server
+cipher AES-256-CBC
+auth SHA256
+verb 3
+auth-user-pass
+<ca>
+{{ ca_cert }}
+</ca>

@@ -1,0 +1,102 @@
+{% extends "base.html" %}
+
+{% block title %}控制面板 - OpenVPN WebUI{% endblock %}
+
+{% block content %}
+<div class="dashboard">
+    <header class="dashboard-header">
+        <h1>OpenVPN 控制面板</h1>
+        <div class="user-info">
+            <span>欢迎，{{ current_user.username }}</span>
+            <a href="/admin/logout" class="btn-logout">退出</a>
+        </div>
+    </header>
+
+    <div class="stats-grid">
+        <div class="stat-card">
+            <h3>总用户数</h3>
+            <div class="stat-number" id="total-users">0</div>
+        </div>
+        <div class="stat-card">
+            <h3>待审核</h3>
+            <div class="stat-number" id="pending-users">0</div>
+        </div>
+        <div class="stat-card">
+            <h3>已开通</h3>
+            <div class="stat-number" id="approved-users">0</div>
+        </div>
+        <div class="stat-card">
+            <h3>OpenVPN状态</h3>
+            <div class="stat-status" id="ovpn-status">检查中...</div>
+        </div>
+    </div>
+
+    <div class="action-buttons">
+        <button class="btn-primary" onclick="location.href='/admin/users'">用户管理</button>
+        <button class="btn-secondary" id="restart-ovpn">重启OpenVPN</button>
+        <button class="btn-secondary" onclick="refreshStats()">刷新状态</button>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function loadStats() {
+    try {
+        const response = await fetch('/api/admin/stats');
+        const stats = await response.json();
+        
+        document.getElementById('total-users').textContent = stats.total_users;
+        document.getElementById('pending-users').textContent = stats.pending_users;
+        document.getElementById('approved-users').textContent = stats.approved_users;
+    } catch (error) {
+        console.error('加载统计信息失败:', error);
+    }
+}
+
+async function checkOpenVPNStatus() {
+    try {
+        const response = await fetch('/api/openvpn/status');
+        const status = await response.json();
+        
+        const statusElement = document.getElementById('ovpn-status');
+        if (status.status === 'active') {
+            statusElement.innerHTML = `<span class="status-active">运行中 (${status.connected_clients} 在线)</span>`;
+        } else {
+            statusElement.innerHTML = '<span class="status-inactive">停止</span>';
+        }
+    } catch (error) {
+        console.error('检查OpenVPN状态失败:', error);
+    }
+}
+
+function refreshStats() {
+    loadStats();
+    checkOpenVPNStatus();
+}
+
+document.getElementById('restart-ovpn').addEventListener('click', async function() {
+    if (confirm('确定要重启OpenVPN服务吗？')) {
+        try {
+            const response = await fetch('/api/openvpn/restart', { method: 'POST' });
+            const result = await response.json();
+            
+            if (result.success) {
+                alert('OpenVPN服务重启成功');
+                setTimeout(checkOpenVPNStatus, 2000);
+            } else {
+                alert('重启失败: ' + result.error);
+            }
+        } catch (error) {
+            alert('重启失败: ' + error.message);
+        }
+    }
+});
+
+// 初始化加载
+loadStats();
+checkOpenVPNStatus();
+// 每30秒自动刷新状态
+setInterval(refreshStats, 30000);
+</script>
+{% endblock %}

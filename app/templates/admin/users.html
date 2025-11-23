@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+
+{% block title %}用户管理 - OpenVPN WebUI{% endblock %}
+
+{% block content %}
+<div class="users-management">
+    <header class="page-header">
+        <h1>用户管理</h1>
+        <a href="/admin/dashboard" class="btn-back">返回控制面板</a>
+    </header>
+
+    <div class="tabs">
+        <button class="tab-btn active" onclick="showTab('pending')">待审核</button>
+        <button class="tab-btn" onclick="showTab('approved')">已开通</button>
+        <button class="tab-btn" onclick="showTab('all')">所有用户</button>
+    </div>
+
+    <div id="pending-tab" class="tab-content active">
+        <h2>待审核用户</h2>
+        <div id="pending-users-list" class="users-list">
+            <!-- 待审核用户列表将通过JavaScript动态加载 -->
+        </div>
+    </div>
+
+    <div id="approved-tab" class="tab-content">
+        <h2>已开通用户</h2>
+        <div id="approved-users-list" class="users-list">
+            <!-- 已开通用户列表将通过JavaScript动态加载 -->
+        </div>
+    </div>
+
+    <div id="all-tab" class="tab-content">
+        <h2>所有用户</h2>
+        <div id="all-users-list" class="users-list">
+            <!-- 所有用户列表将通过JavaScript动态加载 -->
+        </div>
+    </div>
+</div>
+
+<!-- 审核用户模态框 -->
+<div id="approve-modal" class="modal" style="display: none;">
+    <div class="modal-content">
+        <h2>开通用户VPN访问</h2>
+        <form id="approve-form">
+            <input type="hidden" id="approve-user-id">
+            
+            <div class="form-group">
+                <label>用户名:</label>
+                <span id="approve-username"></span>
+            </div>
+            
+            <div class="form-group">
+                <label>OpenVPN用户名:</label>
+                <input type="text" id="ovpn-username" required>
+            </div>
+            
+            <div class="form-group">
+                <label>OpenVPN密码:</label>
+                <input type="password" id="ovpn-password" required>
+            </div>
+            
+            <div class="form-group">
+                <label>确认密码:</label>
+                <input type="password" id="ovpn-password-confirm" required>
+            </div>
+            
+            <div class="form-group">
+                <label>最大设备数:</label>
+                <input type="number" id="max-devices" value="2" min="1" max="10">
+            </div>
+            
+            <div class="form-actions">
+                <button type="button" onclick="closeApproveModal()">取消</button>
+                <button type="submit" class="btn-primary">开通访问</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/users.js') }}"></script>
+{% endblock %}
