@@ -188,12 +188,17 @@ download_webui() {
     # 清理目录
     rm -rf "$INSTALL_DIR/app"
     
-    # 直接执行克隆，依赖git命令的返回码
-    if git clone "$REPO_URL" "$INSTALL_DIR/app" >> "$LOG_FILE" 2>&1; then
-        log "WebUI代码下载成功"
+    # 执行克隆，但不依赖复杂的条件判断
+    log "执行克隆命令..."
+    if git clone "$REPO_URL" "$INSTALL_DIR/app" > /tmp/git_clone.log 2>&1; then
+        log "✅ WebUI代码下载成功"
+        cat /tmp/git_clone.log >> "$LOG_FILE"
         return 0
     else
-        error "WebUI代码下载失败"
+        error "❌ WebUI代码下载失败"
+        log "错误输出:"
+        cat /tmp/git_clone.log >> "$LOG_FILE"
+        cat /tmp/git_clone.log
         return 1
     fi
 }
