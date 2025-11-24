@@ -7,16 +7,23 @@
         "session_timeout": 3600
     },
     "database": {
-        "path": "/opt/ovpn-ui/data/ovpn-ui.db"
+        "path": "/var/lib/ovpn-ui/webui.db"
     },
     "openvpn": {
-        "config_dir": "/opt/ovpn-ui/config/openvpn",
-        "easy_rsa_dir": "/opt/ovpn-ui/easy-rsa",
+        "config_dir": "/usr/local/ovpn-ui/config/openvpn",
+        "easy_rsa_dir": "/usr/local/ovpn-ui/easy-rsa",
         "log_file": "/var/log/openvpn-status.log"
     },
     "security": {
         "password_min_length": 8,
         "max_login_attempts": 5,
         "lockout_time": 900
+    },
+    "paths": {
+        "install_dir": "/usr/local/ovpn-ui",
+        "config_dir": "/etc/ovpn-ui",
+        "data_dir": "/var/lib/ovpn-ui",
+        "log_dir": "/var/log/ovpn-ui",
+        "temp_dir": "/var/lib/ovpn-ui/temp_links"
     }
 }

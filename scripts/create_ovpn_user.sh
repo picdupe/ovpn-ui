@@ -7,9 +7,10 @@ USERNAME=$1
 PASSWORD=$2
 MAX_DEVICES=${3:-2}
 
-INSTALL_DIR="/opt/ovpn-ui"
-AUTH_FILE="$INSTALL_DIR/config/openvpn/auth/users"
-CCD_DIR="$INSTALL_DIR/config/openvpn/ccd"
+INSTALL_DIR="/usr/local/ovpn-ui"
+CONFIG_DIR="/etc/ovpn-ui"
+AUTH_FILE="$CONFIG_DIR/openvpn/auth/users"
+CCD_DIR="$CONFIG_DIR/openvpn/ccd"
 
 log() {
     echo "[$(date +'%Y-%m-%d %H:%M:%S')] $1"

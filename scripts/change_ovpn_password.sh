@@ -7,8 +7,9 @@ USERNAME=$1
 CURRENT_PASSWORD=$2
 NEW_PASSWORD=$3
 
-INSTALL_DIR="/opt/ovpn-ui"
-AUTH_FILE="$INSTALL_DIR/config/openvpn/auth/users"
+INSTALL_DIR="/usr/local/ovpn-ui"
+CONFIG_DIR="/etc/ovpn-ui"
+AUTH_FILE="$CONFIG_DIR/openvpn/auth/users"
 
 log() {
     echo "[$(date +'%Y-%m-%d %H:%M:%S')] $1"

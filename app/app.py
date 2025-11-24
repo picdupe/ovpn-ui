@@ -10,7 +10,21 @@ import logging
 
 app = Flask(__name__)
 app.secret_key = secrets.token_hex(32)
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:////opt/ovpn-ui/data/webui.db'
+
+# 更新配置路径
+INSTALL_DIR = "/usr/local/ovpn-ui"
+CONFIG_DIR = "/etc/ovpn-ui"
+LOG_DIR = "/var/log/ovpn-ui"
+DATA_DIR = "/var/lib/ovpn-ui"
+
+# 创建必要的目录
+os.makedirs(CONFIG_DIR, exist_ok=True)
+os.makedirs(LOG_DIR, exist_ok=True)
+os.makedirs(DATA_DIR, exist_ok=True)
+os.makedirs(f"{DATA_DIR}/temp_links", exist_ok=True)
+
+# 数据库配置
+app.config['SQLALCHEMY_DATABASE_URI'] = f'sqlite:///{DATA_DIR}/webui.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 # 配置日志
@@ -18,7 +32,7 @@ logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.FileHandler('/opt/ovpn-ui/logs/webui.log'),
+        logging.FileHandler(f'{LOG_DIR}/webui.log'),
         logging.StreamHandler()
     ]
 )
@@ -77,7 +91,7 @@ def init_db():
 def create_ovpn_user(username, password, max_devices=2):
     """创建OpenVPN用户"""
     try:
-        script_path = '/opt/ovpn-ui/scripts/create_ovpn_user.sh'
+        script_path = f'{INSTALL_DIR}/scripts/create_ovpn_user.sh'
         result = subprocess.run([
             script_path, username, password, str(max_devices)
         ], capture_output=True, text=True, timeout=30)
@@ -89,7 +103,7 @@ def create_ovpn_user(username, password, max_devices=2):
 def change_ovpn_password(username, current_password, new_password):
     """修改OpenVPN密码"""
     try:
-        script_path = '/opt/ovpn-ui/scripts/change_ovpn_password.sh'
+        script_path = f'{INSTALL_DIR}/scripts/change_ovpn_password.sh'
         result = subprocess.run([
             script_path, username, current_password, new_password
         ], capture_output=True, text=True, timeout=30)
@@ -194,8 +208,8 @@ def generate_download_link(username):
     actual_filename = f'{user.username}.ovpn'
     
     # 创建符号链接
-    source_file = '/opt/ovpn-ui/config/openvpn/common-client.ovpn'
-    temp_filepath = f'/opt/ovpn-ui/data/temp_links/{temp_filename}'
+    source_file = f'{INSTALL_DIR}/config/openvpn/common-client.ovpn'
+    temp_filepath = f'{DATA_DIR}/temp_links/{temp_filename}'
     
     if os.path.exists(temp_filepath):
         os.remove(temp_filepath)
@@ -234,7 +248,7 @@ def download_named_config(temp_filename):
     link.download_count += 1
     db.session.commit()
     
-    file_path = f'/opt/ovpn-ui/data/temp_links/{temp_filename}'
+    file_path = f'{DATA_DIR}/temp_links/{temp_filename}'
     if not os.path.exists(file_path):
         return "文件不存在", 404
     
@@ -244,4 +258,4 @@ def download_named_config(temp_filename):
 
 if __name__ == '__main__':
     init_db()
-    app.run(host='127.0.0.1', port=5000, debug=False)
+    app.run(host='0.0.0.0', port=5000, debug=False)

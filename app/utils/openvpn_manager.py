@@ -6,15 +6,19 @@ from typing import Dict, List, Optional
 logger = logging.getLogger(__name__)
 
 class OpenVPNManager:
-    def __init__(self, install_dir: str = "/opt/ovpn-ui"):
+    def __init__(self, install_dir: str = "/usr/local/ovpn-ui"):
         self.install_dir = install_dir
-        self.openvpn_bin = os.path.join(install_dir, "bin", "openvpn")
-        self.config_dir = os.path.join(install_dir, "config", "openvpn")
+        self.openvpn_bin = "/usr/sbin/openvpn"  # 使用系统安装的OpenVPN
+        self.config_dir = "/etc/ovpn-ui/openvpn"  # 新的配置目录
         self.auth_dir = os.path.join(self.config_dir, "auth")
         
     def create_user(self, username: str, password: str, max_devices: int = 2) -> bool:
         """创建OpenVPN用户"""
         try:
+            # 确保目录存在
+            os.makedirs(self.auth_dir, exist_ok=True)
+            os.makedirs(os.path.join(self.config_dir, "ccd"), exist_ok=True)
+            
             # 创建用户认证文件
             auth_file = os.path.join(self.auth_dir, "users")
             
@@ -35,6 +39,10 @@ class OpenVPNManager:
                 f.write(f"ifconfig-push 10.8.0.{self._get_next_ip()} 255.255.255.0\n")
                 f.write(f"push \"max-routes {max_devices}\"\n")
             
+            # 设置文件权限
+            os.chmod(auth_file, 0o600)
+            os.chmod(ccd_file, 0o644)
+            
             logger.info(f"OpenVPN用户 {username} 创建成功")
             return True
             
@@ -46,6 +54,10 @@ class OpenVPNManager:
         """修改用户密码"""
         try:
             auth_file = os.path.join(self.auth_dir, "users")
+            
+            if not os.path.exists(auth_file):
+                logger.error(f"认证文件不存在: {auth_file}")
+                return False
             
             # 读取现有用户文件
             with open(auth_file, 'r') as f:
@@ -82,9 +94,13 @@ class OpenVPNManager:
                 with open(auth_file, 'w') as f:
                     f.writelines(new_lines)
                 
+                # 重新设置权限
+                os.chmod(auth_file, 0o600)
+                
                 logger.info(f"用户 {username} 密码修改成功")
                 return True
             else:
+                logger.warning(f"未找到用户 {username} 或密码不匹配")
                 return False
                 
         except Exception as e:
@@ -106,6 +122,9 @@ class OpenVPNManager:
                     for line in lines:
                         if not line.startswith(f"{username}:"):
                             f.write(line)
+                
+                # 重新设置权限
+                os.chmod(auth_file, 0o600)
             
             # 删除CCD文件
             if os.path.exists(ccd_file):
@@ -131,7 +150,7 @@ class OpenVPNManager:
             # 获取连接客户端数量
             connected_clients = 0
             if status == "active":
-                status_file = os.path.join(self.install_dir, "logs", "openvpn-status.log")
+                status_file = "/var/log/openvpn-status.log"  # 系统标准位置
                 if os.path.exists(status_file):
                     with open(status_file, 'r') as f:
                         for line in f:
@@ -180,3 +199,21 @@ class OpenVPNManager:
                 return ip
         
         return 254  # 如果所有IP都用完了，返回最后一个
+    
+    def get_user_list(self) -> List[str]:
+        """获取所有OpenVPN用户列表"""
+        try:
+            auth_file = os.path.join(self.auth_dir, "users")
+            users = []
+            
+            if os.path.exists(auth_file):
+                with open(auth_file, 'r') as f:
+                    for line in f:
+                        if ':' in line:
+                            username = line.split(':')[0]
+                            users.append(username)
+            
+            return users
+        except Exception as e:
+            logger.error(f"获取用户列表失败: {e}")
+            return []
