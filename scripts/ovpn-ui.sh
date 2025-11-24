@@ -329,13 +329,13 @@ import sqlite3
 import hashlib
 import os
 
-db_path = "/etc/ovpn-ui/webui.db"
+db_path = "/var/lib/ovpn-ui/webui.db"
 password_hash = hashlib.sha256("$new_pass".encode()).hexdigest()
 
 try:
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
-    cursor.execute('UPDATE admin_users SET password_hash = ? WHERE username = "admin"', (password_hash,))
+    cursor.execute('UPDATE admin_user SET password_hash = ? WHERE username = "admin"', (password_hash,))
     conn.commit()
     conn.close()
     print("密码修改成功")
@@ -367,6 +367,11 @@ backup_config() {
         cp /etc/nginx/sites-available/ovpn-ui $backup_dir/
     fi
     
+    # 备份数据库
+    if [ -f "/var/lib/ovpn-ui/webui.db" ]; then
+        cp /var/lib/ovpn-ui/webui.db $backup_dir/
+    fi
+    
     # 创建压缩包
     cd /tmp
     tar -czf $backup_dir.tar.gz $(basename $backup_dir)
@@ -380,22 +385,35 @@ uninstall_system() {
     echo "─────────────────────────────────────"
     warning "此操作将完全删除 OpenVPN WebUI 系统！"
     echo ""
+    warning "将删除以下内容："
+    echo "  📁 $INSTALL_DIR - 程序文件"
+    echo "  📁 $CONFIG_DIR - 配置文件"
+    echo "  📁 /var/lib/ovpn-ui - 数据文件"
+    echo "  📁 /var/log/ovpn-ui - 日志文件"
+    echo "  📁 /etc/ssl/ovpn-ui - SSL证书"
+    echo "  🔧 /usr/local/bin/ovpn-ui - 管理命令"
+    echo "  🛠️  /etc/systemd/system/ovpn-ui.service - 系统服务"
+    echo ""
     read -p "确定要卸载? [y/N]: " confirm
     
     if [[ $confirm =~ ^[Yy]$ ]]; then
         log "开始卸载..."
         
         # 停止服务
+        log "停止服务..."
         systemctl stop ovpn-ui 2>/dev/null || true
         systemctl stop nginx 2>/dev/null || true
         
         # 禁用服务
+        log "禁用服务..."
         systemctl disable ovpn-ui 2>/dev/null || true
         
         # 删除服务文件
+        log "删除服务文件..."
         rm -f /etc/systemd/system/ovpn-ui.service
         
         # 删除Nginx配置
+        log "删除Nginx配置..."
         rm -f /etc/nginx/sites-available/ovpn-ui
         rm -f /etc/nginx/sites-enabled/ovpn-ui
         
@@ -404,12 +422,35 @@ uninstall_system() {
         systemctl reload nginx 2>/dev/null || true
         
         # 删除管理命令
+        log "删除管理命令..."
+        rm -f /usr/local/bin/ovpn-ui
         rm -f /usr/bin/ovpn-ui
         
-        # 删除安装目录
-        rm -rf $INSTALL_DIR
+        # 删除所有安装的文件和目录
+        log "删除程序文件..."
+        rm -rf $INSTALL_DIR           # 删除克隆的代码
+        
+        log "删除配置文件..."
+        rm -rf $CONFIG_DIR            # 删除配置文件
+        
+        log "删除数据文件..."
+        rm -rf /var/lib/ovpn-ui       # 删除数据文件
+        
+        log "删除日志文件..."
+        rm -rf /var/log/ovpn-ui       # 删除日志文件
+        
+        log "删除SSL证书..."
+        rm -rf /etc/ssl/ovpn-ui       # 删除SSL证书
+        
+        # 删除数据库文件（如果存在）
+        log "删除数据库文件..."
+        rm -f /etc/ovpn-ui/webui.db 2>/dev/null || true
+        rm -f /var/lib/ovpn-ui/webui.db 2>/dev/null || true
         
         log "卸载完成"
+        echo ""
+        echo "✅ OpenVPN WebUI 已完全卸载"
+        echo "📝 所有相关文件和配置已彻底删除"
     else
         log "卸载取消"
     fi

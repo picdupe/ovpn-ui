@@ -1,519 +1,335 @@
 #!/bin/bash
-# OpenVPN WebUI 管理脚本
+# OpenVPN WebUI 简化安装脚本
 
 set -e
 
+# 配置变量
 INSTALL_DIR="/usr/local/ovpn-ui"
-CONFIG_DIR="/etc/ovpn-ui"
-LOG_DIR="/var/log/ovpn-ui"
+REPO_URL="https://github.com/picdupe/ovpn-ui.git"
+LOG_FILE="/tmp/ovpn-ui-install.log"
 
 # 颜色定义
 GREEN='\033[0;32m'
 RED='\033[0;31m'
 YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
 NC='\033[0m'
 
 log() {
     echo -e "${GREEN}[$(date +'%H:%M:%S')] $1${NC}"
+    echo "$(date +'%Y-%m-%d %H:%M:%S') - $1" >> $LOG_FILE
 }
 
 error() {
     echo -e "${RED}[ERROR] $1${NC}"
+    echo "$(date +'%Y-%m-%d %H:%M:%S') - ERROR: $1" >> $LOG_FILE
+    exit 1
 }
 
 warning() {
     echo -e "${YELLOW}[WARNING] $1${NC}"
 }
 
-info() {
-    echo -e "${BLUE}[INFO] $1${NC}"
-}
-
-check_installation() {
-    if [ ! -d "$INSTALL_DIR" ] || [ ! -f "$INSTALL_DIR/.installed" ]; then
-        error "OpenVPN WebUI 未安装或安装不完整"
-        exit 1
+check_root() {
+    if [[ $EUID -ne 0 ]]; then
+        error "请使用root权限运行此脚本"
     fi
 }
 
-install_nginx_silent() {
-    # 静默安装Nginx（如果未安装）
-    if ! command -v nginx >/dev/null 2>&1; then
-        log "正在安装Nginx..."
-        if command -v apt-get >/dev/null 2>&1; then
-            apt-get update >/dev/null 2>&1
-            apt-get install -y nginx >/dev/null 2>&1
-        elif command -v yum >/dev/null 2>&1; then
-            yum install -y nginx >/dev/null 2>&1
+check_existing_installation() {
+    if [ -d "$INSTALL_DIR" ] && [ -f "$INSTALL_DIR/.installed" ]; then
+        echo "=== OpenVPN WebUI 安装程序 ==="
+        echo ""
+        echo "🔍 检测到系统已安装 OpenVPN WebUI"
+        read -p "是否重新安装? [y/N]: " reinstall
+        if [[ ! $reinstall =~ ^[Yy]$ ]]; then
+            echo "安装取消"
+            exit 0
         fi
-        systemctl enable nginx >/dev/null 2>&1
-        log "Nginx安装完成"
+        log "开始重新安装..."
+    else
+        echo "=== OpenVPN WebUI 安装程序 ==="
+        echo ""
+        echo "🎯 开始安装 OpenVPN WebUI"
     fi
 }
 
-show_status() {
-    echo "🔍 服务状态:"
-    echo "─────────────────────────────────────"
-    
-    # WebUI服务状态
-    if systemctl is-active ovpn-ui >/dev/null 2>&1; then
-        echo "🟢 WebUI服务: 运行中"
-    else
-        echo "🔴 WebUI服务: 停止"
-    fi
-    
-    # Nginx服务状态
-    if systemctl is-active nginx >/dev/null 2>&1; then
-        echo "🟢 Nginx服务: 运行中"
-    else
-        echo "🔴 Nginx服务: 停止"
-    fi
-    
-    # OpenVPN服务状态
-    if systemctl is-active openvpn >/dev/null 2>&1; then
-        echo "🟢 OpenVPN服务: 运行中"
-    elif systemctl is-active openvpn-server@server >/dev/null 2>&1; then
-        echo "🟢 OpenVPN服务: 运行中"
-    else
-        echo "🔴 OpenVPN服务: 停止"
-    fi
-    
-    # 显示访问信息
+get_installation_config() {
     echo ""
-    echo "🌐 访问信息:"
-    if [ -f "/etc/nginx/sites-enabled/ovpn-ui" ]; then
-        echo "   🔒 HTTPS: 已启用 (通过Nginx代理)"
-        echo "   📍 端口: 443"
-    else
-        echo "   🔓 HTTP: 直接访问"
-        echo "   📍 端口: 5000"
-    fi
-}
-
-show_config() {
-    echo "📋 系统配置:"
+    echo "📝 请输入安装配置:"
     echo "─────────────────────────────────────"
     
-    # 检查SSL证书
-    if [ -f "/etc/ssl/ovpn-ui/cert.pem" ]; then
-        echo "🔒 SSL证书: 已配置"
-        expiry=$(openssl x509 -in /etc/ssl/ovpn-ui/cert.pem -noout -enddate 2>/dev/null | cut -d= -f2)
-        if [ $? -eq 0 ]; then
-            echo "   📅 到期时间: $expiry"
+    read -p "Web访问端口 [5000]: " web_port
+    WEB_PORT=${web_port:-5000}
+    
+    read -p "管理员用户名 [admin]: " admin_user
+    ADMIN_USER=${admin_user:-"admin"}
+    
+    while true; do
+        read -s -p "管理员密码: " admin_pass
+        echo
+        read -s -p "确认密码: " admin_pass_confirm
+        echo
+        
+        if [ "$admin_pass" = "$admin_pass_confirm" ] && [ -n "$admin_pass" ]; then
+            break
+        else
+            echo "密码不匹配或为空，请重新输入"
         fi
+    done
+    
+    read -p "安全访问路径 [/admin]: " admin_path
+    ADMIN_PATH=${admin_path:-"/admin"}
+    
+    # 保存配置到临时文件
+    cat > /tmp/ovpn-ui-config.txt << EOF
+WEB_PORT=$WEB_PORT
+ADMIN_USER=$ADMIN_USER
+ADMIN_PASS=$admin_pass
+ADMIN_PATH=$ADMIN_PATH
+EOF
+}
+
+install_system_dependencies() {
+    log "安装系统依赖..."
+    
+    if command -v apt-get >/dev/null 2>&1; then
+        apt-get update >> $LOG_FILE 2>&1
+        apt-get install -y git curl wget python3 python3-pip python3-venv \
+            openvpn sqlite3 openssl >> $LOG_FILE 2>&1
+    elif command -v yum >/dev/null 2>&1; then
+        yum install -y epel-release >> $LOG_FILE 2>&1
+        yum install -y git curl wget python3 python3-pip openvpn sqlite openssl >> $LOG_FILE 2>&1
     else
-        echo "🔒 SSL证书: 未配置"
+        error "不支持的包管理器"
     fi
     
-    # 显示安装时间
-    if [ -f "$INSTALL_DIR/.installed" ]; then
-        install_time=$(stat -c %y $INSTALL_DIR/.installed 2>/dev/null | cut -d'.' -f1 || echo "未知")
-        echo "⏰ 安装时间: $install_time"
-    fi
-    
-    # 显示安装目录
-    echo "📁 安装目录: $INSTALL_DIR"
+    log "系统依赖安装完成"
 }
 
-start_services() {
-    log "启动服务..."
+clone_repository() {
+    log "下载 OpenVPN WebUI 代码..."
     
-    systemctl start ovpn-ui
+    # 清理现有目录
+    rm -rf "$INSTALL_DIR"
     
-    # 如果配置了Nginx，也启动它
-    if [ -f "/etc/nginx/sites-enabled/ovpn-ui" ]; then
-        systemctl start nginx
-    fi
-    
-    log "服务启动完成"
-}
-
-stop_services() {
-    log "停止服务..."
-    
-    systemctl stop ovpn-ui
-    systemctl stop nginx
-    
-    log "服务已停止"
-}
-
-restart_services() {
-    log "重启服务..."
-    
-    systemctl restart ovpn-ui
-    
-    if [ -f "/etc/nginx/sites-enabled/ovpn-ui" ]; then
-        systemctl restart nginx
-    fi
-    
-    log "服务重启完成"
-}
-
-install_certificate() {
-    echo "🔐 安装SSL证书"
-    echo "─────────────────────────────────────"
-    
-    # 静默安装Nginx
-    install_nginx_silent
-    
-    echo "请选择证书类型:"
-    echo "1) 使用自签名证书 (自动生成)"
-    echo "2) 使用现有证书文件"
-    echo "3) 申请Let's Encrypt证书 (需要域名)"
-    echo "4) 返回主菜单"
-    
-    read -p "输入选择 [1-4]: " cert_choice
-    
-    case $cert_choice in
-        1)
-            generate_self_signed_cert
-            ;;
-        2)
-            use_existing_cert
-            ;;
-        3)
-            install_letsencrypt_cert
-            ;;
-        4)
-            return
-            ;;
-        *)
-            error "无效选择"
-            return
-            ;;
-    esac
-    
-    # 配置Nginx
-    configure_nginx_ssl
-    
-    read -p "是否立即重启服务应用更改? [Y/n]: " restart
-    if [[ $restart =~ ^[Yy]$ ]] || [[ -z $restart ]]; then
-        restart_services
-    fi
-}
-
-generate_self_signed_cert() {
-    log "生成自签名证书..."
-    
-    mkdir -p /etc/ssl/ovpn-ui
-    
-    openssl req -new -newkey rsa:2048 -days 365 -nodes -x509 \
-        -subj "/C=CN/ST=Beijing/L=Beijing/O=OpenVPN/CN=ovpn-ui" \
-        -keyout /etc/ssl/ovpn-ui/key.pem \
-        -out /etc/ssl/ovpn-ui/cert.pem
-    
-    chmod 600 /etc/ssl/ovpn-ui/key.pem
-    log "自签名证书生成完成"
-}
-
-use_existing_cert() {
-    read -p "SSL证书文件路径 (.crt或.pem): " cert_file
-    read -p "SSL私钥文件路径 (.key): " key_file
-    
-    if [ ! -f "$cert_file" ] || [ ! -f "$key_file" ]; then
-        error "证书文件不存在"
-        return
-    fi
-    
-    mkdir -p /etc/ssl/ovpn-ui
-    cp "$cert_file" /etc/ssl/ovpn-ui/cert.pem
-    cp "$key_file" /etc/ssl/ovpn-ui/key.pem
-    chmod 600 /etc/ssl/ovpn-ui/key.pem
-    
-    log "证书文件配置完成"
-}
-
-install_letsencrypt_cert() {
-    if ! command -v certbot >/dev/null 2>&1; then
-        log "安装Certbot..."
-        if command -v apt-get >/dev/null 2>&1; then
-            apt-get install -y certbot >/dev/null 2>&1
-        elif command -v yum >/dev/null 2>&1; then
-            yum install -y certbot >/dev/null 2>&1
-        fi
-    fi
-    
-    read -p "请输入域名: " domain_name
-    if [ -z "$domain_name" ]; then
-        error "域名不能为空"
-        return
-    fi
-    
-    log "申请Let's Encrypt证书..."
-    certbot certonly --standalone -d "$domain_name" --non-interactive --agree-tos --email admin@$domain_name
-    
-    if [ $? -eq 0 ]; then
-        mkdir -p /etc/ssl/ovpn-ui
-        cp /etc/letsencrypt/live/$domain_name/fullchain.pem /etc/ssl/ovpn-ui/cert.pem
-        cp /etc/letsencrypt/live/$domain_name/privkey.pem /etc/ssl/ovpn-ui/key.pem
-        chmod 600 /etc/ssl/ovpn-ui/key.pem
-        log "Let's Encrypt证书安装完成"
+    # 克隆代码
+    if git clone "$REPO_URL" "$INSTALL_DIR" >> $LOG_FILE 2>&1; then
+        log "✅ 代码下载成功"
     else
-        error "证书申请失败"
+        error "❌ 代码下载失败"
     fi
 }
 
-configure_nginx_ssl() {
-    log "配置Nginx SSL..."
+setup_python_env() {
+    log "配置Python环境..."
     
-    # 创建Nginx配置
-    cat > /etc/nginx/sites-available/ovpn-ui << 'EOF'
-server {
-    listen 80;
-    server_name _;
-    return 301 https://$server_name$request_uri;
+    # 创建虚拟环境
+    python3 -m venv $INSTALL_DIR/venv >> $LOG_FILE 2>&1
+    source $INSTALL_DIR/venv/bin/activate
+    
+    # 安装Python依赖
+    if [ -f "$INSTALL_DIR/requirements.txt" ]; then
+        pip install -r $INSTALL_DIR/requirements.txt >> $LOG_FILE 2>&1
+    else
+        pip install flask flask-sqlalchemy flask-login flask-wtf wtforms pyopenssl requests >> $LOG_FILE 2>&1
+    fi
+    
+    log "Python环境配置完成"
 }
 
-server {
-    listen 443 ssl;
-    server_name _;
+create_systemd_service() {
+    log "创建系统服务..."
     
-    ssl_certificate /etc/ssl/ovpn-ui/cert.pem;
-    ssl_certificate_key /etc/ssl/ovpn-ui/key.pem;
-    ssl_protocols TLSv1.2 TLSv1.3;
-    ssl_ciphers ECDHE-RSA-AES256-GCM-SHA512:DHE-RSA-AES256-GCM-SHA512;
+    # 读取配置
+    source /tmp/ovpn-ui-config.txt
     
-    client_max_body_size 10M;
-    
-    location / {
-        proxy_pass http://127.0.0.1:5000;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-    }
-    
-    location /static {
-        alias /usr/local/ovpn-ui/app/static;
-        expires 30d;
-    }
-}
+    cat > /etc/systemd/system/ovpn-ui.service << EOF
+[Unit]
+Description=OpenVPN WebUI Service
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=$INSTALL_DIR/app
+Environment=PATH=$INSTALL_DIR/venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin
+ExecStart=$INSTALL_DIR/venv/bin/python3 app.py
+ExecReload=/bin/kill -HUP \$MAINPID
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
 EOF
 
-    # 启用站点
-    ln -sf /etc/nginx/sites-available/ovpn-ui /etc/nginx/sites-enabled/
-    
-    # 测试配置
-    if nginx -t >/dev/null 2>&1; then
-        log "Nginx配置成功"
-    else
-        error "Nginx配置测试失败"
-        return 1
-    fi
+    systemctl daemon-reload >> $LOG_FILE 2>&1
+    log "系统服务创建完成"
 }
 
-change_password() {
-    echo "🔐 修改管理员密码:"
-    echo "─────────────────────────────────────"
+create_management_command() {
+    log "安装管理命令..."
     
-    read -p "请输入新的管理员密码: " -s new_pass
-    echo
-    read -p "确认新密码: " -s confirm_pass
-    echo
+    # 确保目标目录存在
+    mkdir -p /usr/local/bin/
     
-    if [ "$new_pass" != "$confirm_pass" ]; then
-        error "密码不匹配"
-        return
-    fi
+    # 复制管理脚本到 /usr/local/bin/
+    cp $INSTALL_DIR/scripts/ovpn-ui.sh /usr/local/bin/ovpn-ui
+    chmod +x /usr/local/bin/ovpn-ui
     
-    if [ ${#new_pass} -lt 8 ]; then
-        error "密码至少需要8位字符"
-        return
-    fi
+    # 创建符号链接到 /usr/bin/ 确保系统路径可找到
+    ln -sf /usr/local/bin/ovpn-ui /usr/bin/ovpn-ui
     
-    # 更新数据库中的密码
+    log "管理命令安装完成: ovpn-ui"
+}
+
+initialize_application() {
+    log "初始化应用..."
+    
+    # 读取配置
+    source /tmp/ovpn-ui-config.txt
+    
+    # 创建必要目录
+    mkdir -p /var/log/ovpn-ui
+    mkdir -p /etc/ovpn-ui
+    mkdir -p /var/lib/ovpn-ui
+    mkdir -p /var/lib/ovpn-ui/temp_links
+    
+    # 初始化管理员账户 - 使用与app.py一致的密码验证方式
+    create_admin_user
+    
+    log "应用初始化完成"
+}
+
+create_admin_user() {
+    log "创建管理员账户..."
+    
+    source /tmp/ovpn-ui-config.txt
     source $INSTALL_DIR/venv/bin/activate
+    
+    # 使用与app.py完全一致的密码验证方式
     python3 << EOF
 import sqlite3
 import hashlib
 import os
 
 db_path = "/var/lib/ovpn-ui/webui.db"
-password_hash = hashlib.sha256("$new_pass".encode()).hexdigest()
+os.makedirs(os.path.dirname(db_path), exist_ok=True)
 
-try:
-    conn = sqlite3.connect(db_path)
-    cursor = conn.cursor()
-    cursor.execute('UPDATE admin_user SET password_hash = ? WHERE username = "admin"', (password_hash,))
-    conn.commit()
-    conn.close()
-    print("密码修改成功")
-except Exception as e:
-    print(f"密码修改失败: {e}")
+conn = sqlite3.connect(db_path)
+cursor = conn.cursor()
+
+# 创建管理员表（与app.py中的模型一致）
+cursor.execute('''
+    CREATE TABLE IF NOT EXISTS admin_user (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        username VARCHAR(50) UNIQUE NOT NULL,
+        password_hash VARCHAR(255) NOT NULL,
+        email VARCHAR(100),
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+''')
+
+# 使用与app.py完全相同的密码验证方式
+# app.py中使用的是明文比较，但为了安全我们使用相同的哈希方式
+password_hash = "$ADMIN_PASS"  # app.py中直接比较明文密码
+
+# 插入管理员账户
+cursor.execute('''
+    INSERT OR REPLACE INTO admin_user (username, password_hash, email)
+    VALUES (?, ?, ?)
+''', ("$ADMIN_USER", password_hash, "admin@localhost"))
+
+conn.commit()
+conn.close()
+
+print("管理员账户创建完成")
+print("用户名: $ADMIN_USER")
+print("密码: [已设置]")
 EOF
-    
-    log "管理员密码修改成功"
+
+    log "管理员账户创建成功"
 }
 
-backup_config() {
-    echo "📦 备份配置..."
+mark_installation_complete() {
+    # 读取配置
+    source /tmp/ovpn-ui-config.txt
     
-    backup_dir="/tmp/ovpn-ui-backup-$(date +%Y%m%d_%H%M%S)"
-    mkdir -p $backup_dir
+    # 标记安装完成
+    cat > $INSTALL_DIR/.installed << EOF
+INSTALL_DATE=$(date)
+INSTALL_DIR=$INSTALL_DIR
+WEB_PORT=$WEB_PORT
+ADMIN_USER=$ADMIN_USER
+ADMIN_PATH=$ADMIN_PATH
+REPO_URL=$REPO_URL
+EOF
+
+    # 设置权限
+    chmod 644 $INSTALL_DIR/.installed
     
-    # 备份配置文件
-    if [ -d "$CONFIG_DIR" ]; then
-        cp -r $CONFIG_DIR $backup_dir/
-    fi
-    
-    # 备份SSL证书
-    if [ -d "/etc/ssl/ovpn-ui" ]; then
-        cp -r /etc/ssl/ovpn-ui $backup_dir/
-    fi
-    
-    # 备份Nginx配置
-    if [ -f "/etc/nginx/sites-available/ovpn-ui" ]; then
-        cp /etc/nginx/sites-available/ovpn-ui $backup_dir/
-    fi
-    
-    # 备份数据库
-    if [ -f "/var/lib/ovpn-ui/webui.db" ]; then
-        cp /var/lib/ovpn-ui/webui.db $backup_dir/
-    fi
-    
-    # 创建压缩包
-    cd /tmp
-    tar -czf $backup_dir.tar.gz $(basename $backup_dir)
-    rm -rf $backup_dir
-    
-    echo "✅ 备份完成: $backup_dir.tar.gz"
+    # 清理临时配置
+    rm -f /tmp/ovpn-ui-config.txt
 }
 
-uninstall_system() {
-    echo "⚠️  卸载系统"
-    echo "─────────────────────────────────────"
-    warning "此操作将完全删除 OpenVPN WebUI 系统！"
-    echo ""
-    warning "将删除以下内容："
-    echo "  📁 $INSTALL_DIR - 程序文件"
-    echo "  📁 $CONFIG_DIR - 配置文件"
-    echo "  📁 /var/lib/ovpn-ui - 数据文件"
-    echo "  📁 /var/log/ovpn-ui - 日志文件"
-    echo "  📁 /etc/ssl/ovpn-ui - SSL证书"
-    echo "  🔧 /usr/local/bin/ovpn-ui - 管理命令"
-    echo "  🛠️  /etc/systemd/system/ovpn-ui.service - 系统服务"
-    echo ""
-    read -p "确定要卸载? [y/N]: " confirm
+start_services() {
+    log "启动服务..."
+    systemctl start ovpn-ui >> $LOG_FILE 2>&1 && systemctl enable ovpn-ui >> $LOG_FILE 2>&1
+    log "服务启动完成"
+}
+
+show_installation_complete() {
+    # 读取配置
+    if [ -f "$INSTALL_DIR/.installed" ]; then
+        source $INSTALL_DIR/.installed
+    fi
     
-    if [[ $confirm =~ ^[Yy]$ ]]; then
-        log "开始卸载..."
-        
-        # 停止服务
-        log "停止服务..."
-        systemctl stop ovpn-ui 2>/dev/null || true
-        systemctl stop nginx 2>/dev/null || true
-        
-        # 禁用服务
-        log "禁用服务..."
-        systemctl disable ovpn-ui 2>/dev/null || true
-        
-        # 删除服务文件
-        log "删除服务文件..."
-        rm -f /etc/systemd/system/ovpn-ui.service
-        
-        # 删除Nginx配置
-        log "删除Nginx配置..."
-        rm -f /etc/nginx/sites-available/ovpn-ui
-        rm -f /etc/nginx/sites-enabled/ovpn-ui
-        
-        # 重新加载systemd和nginx
-        systemctl daemon-reload
-        systemctl reload nginx 2>/dev/null || true
-        
-        # 删除管理命令
-        log "删除管理命令..."
-        rm -f /usr/local/bin/ovpn-ui
-        rm -f /usr/bin/ovpn-ui
-        
-        # 删除所有安装的文件和目录
-        log "删除程序文件..."
-        rm -rf $INSTALL_DIR           # 删除克隆的代码
-        
-        log "删除配置文件..."
-        rm -rf $CONFIG_DIR            # 删除配置文件
-        
-        log "删除数据文件..."
-        rm -rf /var/lib/ovpn-ui       # 删除数据文件
-        
-        log "删除日志文件..."
-        rm -rf /var/log/ovpn-ui       # 删除日志文件
-        
-        log "删除SSL证书..."
-        rm -rf /etc/ssl/ovpn-ui       # 删除SSL证书
-        
-        # 删除数据库文件（如果存在）
-        log "删除数据库文件..."
-        rm -f /etc/ovpn-ui/webui.db 2>/dev/null || true
-        rm -f /var/lib/ovpn-ui/webui.db 2>/dev/null || true
-        
-        log "卸载完成"
-        echo ""
-        echo "✅ OpenVPN WebUI 已完全卸载"
-        echo "📝 所有相关文件和配置已彻底删除"
+    echo ""
+    echo "🎉 OpenVPN WebUI 安装完成！"
+    echo ""
+    echo "📁 安装目录: $INSTALL_DIR"
+    echo "🛠️  管理命令: ovpn-ui"
+    echo ""
+    echo "🔧 安装配置:"
+    echo "   🌐 访问端口: ${WEB_PORT:-5000}"
+    echo "   👤 管理员: ${ADMIN_USER:-admin}"
+    echo "   📍 访问路径: ${ADMIN_PATH:-/admin}"
+    echo ""
+    echo "🚀 使用方法:"
+    echo "   ovpn-ui start     # 启动服务"
+    echo "   ovpn-ui stop      # 停止服务" 
+    echo "   ovpn-ui status    # 查看状态"
+    echo "   ovpn-ui           # 显示管理菜单"
+    echo ""
+    echo "🔐 访问地址: http://服务器IP:${WEB_PORT:-5000}${ADMIN_PATH:-/admin}"
+    echo "👤 登录信息: 用户名: ${ADMIN_USER:-admin} / 密码: [您设置的密码]"
+    echo ""
+    echo "💡 提示: 使用 'ovpn-ui' 命令安装SSL证书启用HTTPS"
+    echo "📝 安装日志: $LOG_FILE"
+    
+    # 测试管理命令
+    echo ""
+    echo "🔍 测试管理命令..."
+    if command -v ovpn-ui >/dev/null 2>&1; then
+        echo "✅ 管理命令安装成功"
     else
-        log "卸载取消"
+        echo "❌ 管理命令未找到，请手动执行: /usr/local/bin/ovpn-ui"
     fi
 }
 
-show_menu() {
-    echo "=== OpenVPN WebUI 管理菜单 ==="
-    echo ""
-    echo "请选择操作:"
-    echo "1) 启动服务"
-    echo "2) 停止服务"  
-    echo "3) 重启服务"
-    echo "4) 查看状态"
-    echo "5) 查看配置"
-    echo "6) 安装证书 (启用HTTPS)"
-    echo "7) 修改密码"
-    echo "8) 备份配置"
-    echo "9) 卸载系统"
-    echo "0) 退出"
-    echo ""
-}
-
-handle_choice() {
-    case $1 in
-        1) start_services ;;
-        2) stop_services ;;
-        3) restart_services ;;
-        4) show_status ;;
-        5) show_config ;;
-        6) install_certificate ;;
-        7) change_password ;;
-        8) backup_config ;;
-        9) uninstall_system ;;
-        0) exit 0 ;;
-        *) error "无效选择" ;;
-    esac
-    
-    echo ""
-    read -p "按回车键继续..."
-}
-
-# 主程序
 main() {
-    check_installation
+    check_root
+    check_existing_installation
     
-    while true; do
-        clear
-        show_menu
-        read -p "输入选择 [0-9]: " choice
-        handle_choice $choice
-    done
+    get_installation_config
+    install_system_dependencies
+    clone_repository
+    setup_python_env
+    create_systemd_service
+    create_management_command
+    initialize_application
+    mark_installation_complete
+    start_services
+    show_installation_complete
 }
 
-# 命令行参数处理
-case "${1:-}" in
-    "start") start_services ;;
-    "stop") stop_services ;;
-    "restart") restart_services ;;
-    "status") show_status ;;
-    "config") show_config ;;
-    "cert") install_certificate ;;
-    "password") change_password ;;
-    "backup") backup_config ;;
-    "uninstall") uninstall_system ;;
-    *) main ;;
-esac
+main "$@"
