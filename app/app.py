@@ -123,9 +123,9 @@ def admin_login():
         username = request.json.get('username')
         password = request.json.get('password')
         
-        # 验证管理员账户
+        # 验证管理员账户 - 使用明文密码比较
         user = AdminUser.query.filter_by(username=username).first()
-        if user and user.password_hash == password:
+        if user and user.password_hash == password:  # 直接比较明文密码
             login_user(user)
             return jsonify({'success': True})
         

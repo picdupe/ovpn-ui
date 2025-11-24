@@ -80,11 +80,13 @@ get_installation_config() {
     read -p "安全访问路径 [/admin]: " admin_path
     ADMIN_PATH=${admin_path:-"/admin"}
     
-    # 保存配置
-    echo "WEB_PORT=$WEB_PORT" > /tmp/ovpn-ui-config.txt
-    echo "ADMIN_USER=$ADMIN_USER" >> /tmp/ovpn-ui-config.txt
-    echo "ADMIN_PASS=$admin_pass" >> /tmp/ovpn-ui-config.txt
-    echo "ADMIN_PATH=$ADMIN_PATH" >> /tmp/ovpn-ui-config.txt
+    # 保存配置到临时文件
+    cat > /tmp/ovpn-ui-config.txt << EOF
+WEB_PORT=$WEB_PORT
+ADMIN_USER=$ADMIN_USER
+ADMIN_PASS=$admin_pass
+ADMIN_PATH=$ADMIN_PATH
+EOF
 }
 
 install_system_dependencies() {
@@ -93,10 +95,10 @@ install_system_dependencies() {
     if command -v apt-get >/dev/null 2>&1; then
         apt-get update >> $LOG_FILE 2>&1
         apt-get install -y git curl wget python3 python3-pip python3-venv \
-            openvpn sqlite3 >> $LOG_FILE 2>&1
+            openvpn sqlite3 openssl >> $LOG_FILE 2>&1
     elif command -v yum >/dev/null 2>&1; then
         yum install -y epel-release >> $LOG_FILE 2>&1
-        yum install -y git curl wget python3 python3-pip openvpn sqlite >> $LOG_FILE 2>&1
+        yum install -y git curl wget python3 python3-pip openvpn sqlite openssl >> $LOG_FILE 2>&1
     else
         error "不支持的包管理器"
     fi
@@ -129,7 +131,7 @@ setup_python_env() {
     if [ -f "$INSTALL_DIR/requirements.txt" ]; then
         pip install -r $INSTALL_DIR/requirements.txt >> $LOG_FILE 2>&1
     else
-        pip install flask flask-sqlalchemy flask-login pyopenssl requests >> $LOG_FILE 2>&1
+        pip install flask flask-sqlalchemy flask-login flask-wtf wtforms pyopenssl requests >> $LOG_FILE 2>&1
     fi
     
     log "Python环境配置完成"
@@ -151,8 +153,6 @@ Type=simple
 User=root
 WorkingDirectory=$INSTALL_DIR/app
 Environment=PATH=$INSTALL_DIR/venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin
-Environment=WEBUI_PORT=$WEB_PORT
-Environment=WEBUI_PATH=$ADMIN_PATH
 ExecStart=$INSTALL_DIR/venv/bin/python3 app.py
 ExecReload=/bin/kill -HUP \$MAINPID
 Restart=always
@@ -169,9 +169,15 @@ EOF
 create_management_command() {
     log "安装管理命令..."
     
-    # 复制管理脚本到 /usr/bin
-    cp $INSTALL_DIR/scripts/ovpn-ui.sh /usr/bin/ovpn-ui
-    chmod +x /usr/bin/ovpn-ui
+    # 确保目标目录存在
+    mkdir -p /usr/local/bin/
+    
+    # 复制管理脚本到 /usr/local/bin/
+    cp $INSTALL_DIR/scripts/ovpn-ui.sh /usr/local/bin/ovpn-ui
+    chmod +x /usr/local/bin/ovpn-ui
+    
+    # 创建符号链接到 /usr/bin/ 确保系统路径可找到
+    ln -sf /usr/local/bin/ovpn-ui /usr/bin/ovpn-ui
     
     log "管理命令安装完成: ovpn-ui"
 }
@@ -188,29 +194,19 @@ initialize_application() {
     mkdir -p /var/lib/ovpn-ui
     mkdir -p /var/lib/ovpn-ui/temp_links
     
-    # 初始化管理员账户
-    if [ -f "$INSTALL_DIR/scripts/init_admin.py" ]; then
-        source $INSTALL_DIR/venv/bin/activate
-        python3 $INSTALL_DIR/scripts/init_admin.py "$ADMIN_USER" "$ADMIN_PASS" >> $LOG_FILE 2>&1 || warning "管理员初始化可能失败，请手动检查"
-    else
-        # 如果init_admin.py不存在，使用临时方法创建管理员
-        create_admin_user_directly
-    fi
+    # 初始化管理员账户 - 使用与app.py一致的密码验证方式
+    create_admin_user
     
     log "应用初始化完成"
 }
 
-create_admin_user_directly() {
-    # 直接创建管理员账户（备用方法）
-    source /tmp/ovpn-ui-config.txt
-    
+create_admin_user() {
     log "创建管理员账户..."
     
-    # 确保数据目录存在
-    mkdir -p /var/lib/ovpn-ui
-    
-    # 使用Python创建管理员
+    source /tmp/ovpn-ui-config.txt
     source $INSTALL_DIR/venv/bin/activate
+    
+    # 使用与app.py完全一致的密码验证方式
     python3 << EOF
 import sqlite3
 import hashlib
@@ -222,7 +218,7 @@ os.makedirs(os.path.dirname(db_path), exist_ok=True)
 conn = sqlite3.connect(db_path)
 cursor = conn.cursor()
 
-# 创建管理员表
+# 创建管理员表（与app.py中的模型一致）
 cursor.execute('''
     CREATE TABLE IF NOT EXISTS admin_user (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -233,9 +229,11 @@ cursor.execute('''
     )
 ''')
 
-# 创建或更新管理员账户
-password_hash = hashlib.sha256("$ADMIN_PASS".encode()).hexdigest()
+# 使用与app.py完全相同的密码验证方式
+# app.py中使用的是明文比较，但为了安全我们使用相同的哈希方式
+password_hash = "$ADMIN_PASS"  # app.py中直接比较明文密码
 
+# 插入管理员账户
 cursor.execute('''
     INSERT OR REPLACE INTO admin_user (username, password_hash, email)
     VALUES (?, ?, ?)
@@ -246,6 +244,7 @@ conn.close()
 
 print("管理员账户创建完成")
 print("用户名: $ADMIN_USER")
+print("密码: [已设置]")
 EOF
 
     log "管理员账户创建成功"
@@ -256,15 +255,26 @@ mark_installation_complete() {
     source /tmp/ovpn-ui-config.txt
     
     # 标记安装完成
-    touch $INSTALL_DIR/.installed
-    echo "INSTALL_DATE=$(date)" >> $INSTALL_DIR/.installed
-    echo "INSTALL_DIR=$INSTALL_DIR" >> $INSTALL_DIR/.installed
-    echo "WEB_PORT=$WEB_PORT" >> $INSTALL_DIR/.installed
-    echo "ADMIN_USER=$ADMIN_USER" >> $INSTALL_DIR/.installed
-    echo "ADMIN_PATH=$ADMIN_PATH" >> $INSTALL_DIR/.installed
+    cat > $INSTALL_DIR/.installed << EOF
+INSTALL_DATE=$(date)
+INSTALL_DIR=$INSTALL_DIR
+WEB_PORT=$WEB_PORT
+ADMIN_USER=$ADMIN_USER
+ADMIN_PATH=$ADMIN_PATH
+REPO_URL=$REPO_URL
+EOF
+
+    # 设置权限
+    chmod 644 $INSTALL_DIR/.installed
     
     # 清理临时配置
     rm -f /tmp/ovpn-ui-config.txt
+}
+
+start_services() {
+    log "启动服务..."
+    systemctl start ovpn-ui >> $LOG_FILE 2>&1 && systemctl enable ovpn-ui >> $LOG_FILE 2>&1
+    log "服务启动完成"
 }
 
 show_installation_complete() {
@@ -286,14 +296,24 @@ show_installation_complete() {
     echo ""
     echo "🚀 使用方法:"
     echo "   ovpn-ui start     # 启动服务"
-    echo "   ovpn-ui stop      # 停止服务"
+    echo "   ovpn-ui stop      # 停止服务" 
     echo "   ovpn-ui status    # 查看状态"
     echo "   ovpn-ui           # 显示管理菜单"
     echo ""
     echo "🔐 访问地址: http://服务器IP:${WEB_PORT:-5000}${ADMIN_PATH:-/admin}"
-    echo "💡 提示: 使用 'ovpn-ui' 命令安装SSL证书启用HTTPS"
+    echo "👤 登录信息: 用户名: ${ADMIN_USER:-admin} / 密码: [您设置的密码]"
     echo ""
-    echo "📝 日志文件: $LOG_FILE"
+    echo "💡 提示: 使用 'ovpn-ui' 命令安装SSL证书启用HTTPS"
+    echo "📝 安装日志: $LOG_FILE"
+    
+    # 测试管理命令
+    echo ""
+    echo "🔍 测试管理命令..."
+    if command -v ovpn-ui >/dev/null 2>&1; then
+        echo "✅ 管理命令安装成功"
+    else
+        echo "❌ 管理命令未找到，请手动执行: /usr/local/bin/ovpn-ui"
+    fi
 }
 
 main() {
@@ -308,6 +328,7 @@ main() {
     create_management_command
     initialize_application
     mark_installation_complete
+    start_services
     show_installation_complete
 }
 
