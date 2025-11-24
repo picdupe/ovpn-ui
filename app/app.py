@@ -281,9 +281,16 @@ def openvpn_status():
     try:
         # 检查OpenVPN服务状态
         result = subprocess.run(
-            ['systemctl', 'is-active', 'openvpn-server@server'],
+            ['systemctl', 'is-active', 'openvpn'],
             capture_output=True, text=True
         )
+        
+        # 如果openvpn服务不存在，尝试openvpn-server@server
+        if result.returncode != 0:
+            result = subprocess.run(
+                ['systemctl', 'is-active', 'openvpn-server@server'],
+                capture_output=True, text=True
+            )
         
         status = "active" if result.returncode == 0 else "inactive"
         
@@ -316,15 +323,22 @@ def openvpn_status():
 def restart_openvpn():
     """重启OpenVPN服务"""
     try:
-        result = subprocess.run(
-            ['systemctl', 'restart', 'openvpn-server@server'],
-            capture_output=True, text=True
-        )
+        # 尝试不同的服务名称
+        services = ['openvpn', 'openvpn-server@server']
+        success = False
         
-        success = result.returncode == 0
+        for service in services:
+            result = subprocess.run(
+                ['systemctl', 'restart', service],
+                capture_output=True, text=True
+            )
+            if result.returncode == 0:
+                success = True
+                break
+        
         return jsonify({
             'success': success,
-            'message': 'OpenVPN服务重启成功' if success else '重启失败'
+            'message': 'OpenVPN服务重启成功' if success else '重启失败，请检查服务名称'
         })
     except Exception as e:
         return jsonify({
@@ -387,9 +401,22 @@ def delete_user(user_id):
         # 删除OpenVPN用户（如果已创建）
         if user.ovpn_username:
             try:
-                script_path = f'{INSTALL_DIR}/scripts/delete_ovpn_user.sh'
-                if os.path.exists(script_path):
-                    subprocess.run([script_path, user.ovpn_username], capture_output=True)
+                # 从认证文件中删除用户
+                auth_file = "/etc/ovpn-ui/openvpn/auth/users"
+                if os.path.exists(auth_file):
+                    with open(auth_file, 'r') as f:
+                        lines = f.readlines()
+                    
+                    with open(auth_file, 'w') as f:
+                        for line in lines:
+                            if not line.startswith(f"{user.ovpn_username}:"):
+                                f.write(line)
+                
+                # 删除CCD文件
+                ccd_file = f"/etc/ovpn-ui/openvpn/ccd/{user.ovpn_username}"
+                if os.path.exists(ccd_file):
+                    os.remove(ccd_file)
+                    
             except Exception as e:
                 app.logger.warning(f"删除OpenVPN用户失败: {e}")
         
@@ -445,7 +472,7 @@ def user_profile():
     """用户个人资料页面"""
     return render_template('user/profile.html')
 
-# ==================== 添加基础模板路由 ====================
+# ==================== 添加基础路由 ====================
 
 @app.route('/admin')
 @login_required
