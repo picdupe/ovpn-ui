@@ -488,3 +488,231 @@ def user_index():
 if __name__ == '__main__':
     init_db()
     app.run(host='0.0.0.0', port=5000, debug=False)
+# ==================== 添加缺失的路由 ====================
+
+@app.route('/admin/users')
+@login_required
+def admin_users():
+    """用户管理页面"""
+    return render_template('admin/users.html')
+
+@app.route('/admin/openvpn')
+@login_required
+def admin_openvpn():
+    """OpenVPN配置页面"""
+    return render_template('admin/openvpn.html')
+
+@app.route('/api/openvpn/status')
+@login_required
+def openvpn_status():
+    """获取OpenVPN状态"""
+    try:
+        # 检查OpenVPN服务状态
+        result = subprocess.run(
+            ['systemctl', 'is-active', 'openvpn'],
+            capture_output=True, text=True
+        )
+        
+        # 如果openvpn服务不存在，尝试openvpn-server@server
+        if result.returncode != 0:
+            result = subprocess.run(
+                ['systemctl', 'is-active', 'openvpn-server@server'],
+                capture_output=True, text=True
+            )
+        
+        status = "active" if result.returncode == 0 else "inactive"
+        
+        # 获取连接客户端数量
+        connected_clients = 0
+        if status == "active":
+            status_file = "/var/log/openvpn-status.log"
+            if os.path.exists(status_file):
+                with open(status_file, 'r') as f:
+                    for line in f:
+                        if line.startswith("CLIENT_LIST"):
+                            connected_clients += 1
+        
+        return jsonify({
+            'success': True,
+            'status': status,
+            'connected_clients': connected_clients,
+            'server_running': status == 'active'
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'status': 'error',
+            'connected_clients': 0
+        })
+
+@app.route('/api/openvpn/restart', methods=['POST'])
+@login_required
+def restart_openvpn():
+    """重启OpenVPN服务"""
+    try:
+        # 尝试不同的服务名称
+        services = ['openvpn', 'openvpn-server@server']
+        success = False
+        
+        for service in services:
+            result = subprocess.run(
+                ['systemctl', 'restart', service],
+                capture_output=True, text=True
+            )
+            if result.returncode == 0:
+                success = True
+                break
+        
+        return jsonify({
+            'success': success,
+            'message': 'OpenVPN服务重启成功' if success else '重启失败，请检查服务名称'
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        })
+
+@app.route('/api/users/list')
+@login_required
+def get_users_list():
+    """获取所有用户列表"""
+    try:
+        users = NormalUser.query.all()
+        user_list = []
+        
+        for user in users:
+            user_data = {
+                'id': user.id,
+                'username': user.username,
+                'email': user.email,
+                'status': user.status,
+                'ovpn_username': user.ovpn_username,
+                'max_devices': user.max_devices,
+                'created_at': user.created_at.isoformat() if user.created_at else None,
+                'approved_at': user.approved_at.isoformat() if user.approved_at else None
+            }
+            user_list.append(user_data)
+        
+        return jsonify({
+            'success': True,
+            'users': user_list
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        })
+
+@app.route('/api/users/<int:user_id>/reject', methods=['POST'])
+@login_required
+def reject_user(user_id):
+    """拒绝用户申请"""
+    try:
+        user = NormalUser.query.get_or_404(user_id)
+        user.status = 'rejected'
+        db.session.commit()
+        
+        app.logger.info(f"用户 {user.username} 申请被拒绝")
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/api/users/<int:user_id>/delete', methods=['POST'])
+@login_required
+def delete_user(user_id):
+    """删除用户"""
+    try:
+        user = NormalUser.query.get_or_404(user_id)
+        
+        # 删除OpenVPN用户（如果已创建）
+        if user.ovpn_username:
+            try:
+                # 从认证文件中删除用户
+                auth_file = "/etc/ovpn-ui/openvpn/auth/users"
+                if os.path.exists(auth_file):
+                    with open(auth_file, 'r') as f:
+                        lines = f.readlines()
+                    
+                    with open(auth_file, 'w') as f:
+                        for line in lines:
+                            if not line.startswith(f"{user.ovpn_username}:"):
+                                f.write(line)
+                
+                # 删除CCD文件
+                ccd_file = f"/etc/ovpn-ui/openvpn/ccd/{user.ovpn_username}"
+                if os.path.exists(ccd_file):
+                    os.remove(ccd_file)
+                    
+            except Exception as e:
+                app.logger.warning(f"删除OpenVPN用户失败: {e}")
+        
+        # 删除数据库记录
+        db.session.delete(user)
+        db.session.commit()
+        
+        app.logger.info(f"用户 {user.username} 已删除")
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+# 添加用户注册路由（普通用户注册）
+@app.route('/register', methods=['GET', 'POST'])
+def user_register():
+    """用户注册页面"""
+    if request.method == 'POST':
+        try:
+            data = request.json
+            username = data.get('username')
+            email = data.get('email')
+            
+            # 检查用户是否已存在
+            existing_user = NormalUser.query.filter(
+                (NormalUser.username == username) | (NormalUser.email == email)
+            ).first()
+            
+            if existing_user:
+                return jsonify({
+                    'success': False,
+                    'error': '用户名或邮箱已存在'
+                })
+            
+            # 创建新用户
+            new_user = NormalUser(
+                username=username,
+                email=email,
+                status='pending'
+            )
+            db.session.add(new_user)
+            db.session.commit()
+            
+            app.logger.info(f"新用户注册: {username} ({email})")
+            return jsonify({'success': True})
+            
+        except Exception as e:
+            return jsonify({'success': False, 'error': str(e)})
+    
+    return render_template('user/register.html')
+
+@app.route('/user/profile')
+def user_profile():
+    """用户个人资料页面"""
+    return render_template('user/profile.html')
+
+# ==================== 添加基础路由 ====================
+
+@app.route('/admin')
+@login_required
+def admin_index():
+    """管理员首页"""
+    return redirect(url_for('admin_dashboard'))
+
+@app.route('/user')
+def user_index():
+    """用户首页"""
+    return redirect(url_for('user_profile'))
+
+if __name__ == '__main__':
+    init_db()
+    app.run(host='0.0.0.0', port=5000, debug=False)
