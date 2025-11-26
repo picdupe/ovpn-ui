@@ -1,78 +1,95 @@
-from flask import Blueprint, request, jsonify, session, render_template, redirect
-from app.models import User
-from werkzeug.security import check_password_hash
-from werkzeug.security import generate_password_hash
+from flask import Blueprint, request, jsonify, session
+import hashlib
+import json
+import os
+from datetime import datetime
 
 user_bp = Blueprint('user', __name__, url_prefix='/user')
 
+# 简单用户存储文件（可换成数据库）
+USER_DB = "users.json"
 
-# -------------------------
-# 用户登录
-# -------------------------
-@user_bp.route('/login', methods=['GET', 'POST'])
-def login():
-    if request.method == 'POST':
-        data = request.json
-        username = data.get('username')
-        password = data.get('password')
+def load_users():
+    if not os.path.exists(USER_DB):
+        return {}
+    with open(USER_DB, "r", encoding="utf-8") as f:
+        return json.load(f)
 
-        user = User.query.filter_by(username=username).first()
+def save_users(users):
+    with open(USER_DB, "w", encoding="utf-8") as f:
+        json.dump(users, f, indent=4, ensure_ascii=False)
 
-        if not user or not check_password_hash(user.password, password):
-            return jsonify({'success': False, 'error': '用户名或密码错误'})
-
-        session['user_id'] = user.id
-        session.modified = True
-
-        return jsonify({'success': True})
-
-    return render_template('user/login.html')
+def hash_password(password):
+    return hashlib.sha256(password.encode()).hexdigest()
 
 
-# -------------------------
-# 用户资料页面
-# -------------------------
-@user_bp.route('/profile')
-def profile():
-    user_id = session.get('user_id')
-    if not user_id:
-        return redirect('/user/login')
+# --------------------------- 用户注册 ---------------------------
 
-    user = User.query.get(user_id)
-    return render_template("user/profile.html", user=user)
-
-
-# -------------------------
-# 用户注册（保持你的逻辑）
-# -------------------------
 @user_bp.route('/register', methods=['POST'])
 def register():
     data = request.json
-    username = data.get('username')
-    email = data.get('email')
-    password = data.get('password')
+    username = data.get("username")
+    email = data.get("email")
+    password = data.get("password")
 
-    # 真实项目应该检查用户是否已存在
-    hashed = generate_password_hash(password)
+    if not username or not email or not password:
+        return jsonify({"success": False, "error": "缺少必要字段"})
 
-    new_user = User(username=username, email=email, password=hashed)
-    new_user.status = "pending"
+    users = load_users()
 
-    from app import db
-    db.session.add(new_user)
-    db.session.commit()
+    if username in users:
+        return jsonify({"success": False, "error": "该用户名已存在"})
 
-    return jsonify({'success': True, 'message': '注册成功，等待管理员审核'})
+    users[username] = {
+        "username": username,
+        "email": email,
+        "password": hash_password(password),
+        "created_at": str(datetime.now())
+    }
+
+    save_users(users)
+    return jsonify({"success": True, "message": "注册成功，等待管理员审核"})
 
 
-# -------------------------
-# 用户修改密码（保持你的逻辑）
-# -------------------------
+# --------------------------- 用户登录 ---------------------------
+
+@user_bp.route('/login', methods=['POST'])
+def login():
+    data = request.json
+    username = data.get("username")
+    password = data.get("password")
+
+    users = load_users()
+
+    if username not in users:
+        return jsonify({"success": False, "error": "用户不存在"})
+
+    if users[username]["password"] != hash_password(password):
+        return jsonify({"success": False, "error": "密码错误"})
+
+    # 登录成功
+    session["username"] = username
+    return jsonify({"success": True})
+
+
+# --------------------------- 修改密码 ---------------------------
+
 @user_bp.route('/change-password', methods=['POST'])
 def change_password():
     data = request.json
-    username = data.get('username')
-    current_password = data.get('current_password')
-    new_password = data.get('new_password')
+    username = data.get("username")
+    current_password = data.get("current_password")
+    new_password = data.get("new_password")
 
-    return jsonify({'success': True, 'message': '密码修改成功'})
+    users = load_users()
+
+    if username not in users:
+        return jsonify({"success": False, "error": "用户不存在"})
+
+    if users[username]["password"] != hash_password(current_password):
+        return jsonify({"success": False, "error": "旧密码错误"})
+
+    users[username]["password"] = hash_password(new_password)
+    save_users(users)
+
+    return jsonify({"success": True, "message": "密码修改成功"})
