@@ -544,7 +544,7 @@ function generateDownloadLink() {
             alert('生成下载链接失败: ' + data.error);
         }
     })
-    .catch(error) {
+    .catch(error => {
         console.error('Error:', error);
         alert('生成下载链接请求失败');
     });

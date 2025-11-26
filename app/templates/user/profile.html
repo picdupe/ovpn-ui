@@ -198,8 +198,8 @@ function closeDownloadModal() {
 document.getElementById('change-password-form').addEventListener('submit', function(e) {
     e.preventDefault();
     
-    const newPassword = document.getElementById('new-ovpn-password').value;
-    const confirmPassword = document.getElementById('confirm-ovpn-password').value;
+    var newPassword = document.getElementById('new-ovpn-password').value;
+    var confirmPassword = document.getElementById('confirm-ovpn-password').value;
     
     if (!newPassword || !confirmPassword) {
         showMessage('请填写新密码和确认密码', 'danger');
@@ -226,8 +226,10 @@ document.getElementById('change-password-form').addEventListener('submit', funct
             confirm_password: confirmPassword
         })
     })
-    .then(response => response.json())
-    .then(data => {
+    .then(function(response) {
+        return response.json();
+    })
+    .then(function(data) {
         if (data.success) {
             showMessage(data.message || 'OpenVPN密码修改成功', 'success');
             closeChangePasswordModal();
@@ -235,7 +237,7 @@ document.getElementById('change-password-form').addEventListener('submit', funct
             showMessage('修改失败: ' + data.error, 'danger');
         }
     })
-    .catch(error => {
+    .catch(function(error) {
         console.error('Error:', error);
         showMessage('修改请求失败，请稍后重试', 'danger');
     });
@@ -243,16 +245,18 @@ document.getElementById('change-password-form').addEventListener('submit', funct
 
 // 生成配置文件
 function generateConfig() {
-    const username = document.getElementById('user-username').textContent;
+    var username = document.getElementById('user-username').textContent;
     
-    fetch(`/api/users/${username}/generate_download`, {
+    fetch('/api/users/' + username + '/generate_download', {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
         }
     })
-    .then(response => response.json())
-    .then(data => {
+    .then(function(response) {
+        return response.json();
+    })
+    .then(function(data) {
         if (data.success) {
             // 显示下载链接模态框
             document.getElementById('download-link').href = data.download_url;
@@ -263,7 +267,7 @@ function generateConfig() {
             showMessage('生成配置文件失败: ' + data.error, 'danger');
         }
     })
-    .catch(error => {
+    .catch(function(error) {
         console.error('Error:', error);
         showMessage('生成配置文件请求失败', 'danger');
     });
@@ -271,24 +275,70 @@ function generateConfig() {
 
 // 显示消息
 function showMessage(message, type) {
-    const messageDiv = document.getElementById('message');
+    var messageDiv = document.getElementById('message');
     messageDiv.textContent = message;
-    messageDiv.className = `alert alert-${type}`;
+    messageDiv.className = 'alert alert-' + type;
     messageDiv.style.display = 'block';
     
     // 3秒后自动隐藏成功消息
     if (type === 'success') {
-        setTimeout(() => {
+        setTimeout(function() {
             messageDiv.style.display = 'none';
         }, 3000);
     }
 }
 
-// 页面加载时检查用户状态
+// 加载连接状态
+function loadConnectionStatus() {
+    fetch('/user/connection_status')
+        .then(function(response) {
+            return response.json();
+        })
+        .then(function(data) {
+            var statusDiv = document.getElementById('connection-status');
+            if (data.success) {
+                if (data.connected) {
+                    statusDiv.innerHTML = '<div class="alert alert-success">' +
+                        '<i class="fas fa-check-circle"></i>' +
+                        '当前状态: <strong>已连接</strong>' +
+                        '<br>' +
+                        '<small>连接时间: ' + (data.connected_since || '未知') + '</small>' +
+                        '<br>' +
+                        '<small>客户端IP: ' + (data.client_ip || '未知') + '</small>' +
+                        '</div>';
+                } else {
+                    statusDiv.innerHTML = '<div class="alert alert-secondary">' +
+                        '<i class="fas fa-times-circle"></i>' +
+                        '当前状态: <strong>未连接</strong>' +
+                        '</div>';
+                }
+            } else {
+                statusDiv.innerHTML = '<div class="alert alert-warning">' +
+                    '<i class="fas fa-exclamation-triangle"></i>' +
+                    '无法获取连接状态: ' + (data.error || '未知错误') +
+                    '</div>';
+            }
+        })
+        .catch(function(error) {
+            console.error('Error loading connection status:', error);
+            document.getElementById('connection-status').innerHTML = 
+                '<div class="alert alert-danger">' +
+                '<i class="fas fa-exclamation-triangle"></i>' +
+                '获取连接状态失败，请刷新页面重试' +
+                '</div>';
+        });
+}
+
+// 页面加载时初始化
 document.addEventListener('DOMContentLoaded', function() {
     // 如果用户未登录，跳转到登录页面
     {% if not user %}
     window.location.href = '/user/login';
+    {% endif %}
+    
+    // 加载连接状态（如果用户已开通）
+    {% if user and user.status == 'approved' %}
+    loadConnectionStatus();
     {% endif %}
 });
 </script>
@@ -365,6 +415,11 @@ document.addEventListener('DOMContentLoaded', function() {
     top: 15px;
     font-size: 24px;
     cursor: pointer;
+    color: #aaa;
+}
+
+.close:hover {
+    color: #000;
 }
 
 .form-group {
@@ -375,6 +430,49 @@ document.addEventListener('DOMContentLoaded', function() {
     display: block;
     padding: 6px 0;
     font-weight: bold;
+}
+
+.form-actions {
+    display: flex;
+    gap: 10px;
+    justify-content: flex-end;
+    margin-top: 20px;
+}
+
+.alert {
+    padding: 12px 15px;
+    border-radius: 4px;
+    margin-bottom: 15px;
+}
+
+.alert-success {
+    background-color: #d4edda;
+    border-color: #c3e6cb;
+    color: #155724;
+}
+
+.alert-danger {
+    background-color: #f8d7da;
+    border-color: #f5c6cb;
+    color: #721c24;
+}
+
+.alert-warning {
+    background-color: #fff3cd;
+    border-color: #ffeaa7;
+    color: #856404;
+}
+
+.alert-info {
+    background-color: #d1ecf1;
+    border-color: #bee5eb;
+    color: #0c5460;
+}
+
+.alert-secondary {
+    background-color: #e2e3e5;
+    border-color: #d6d8db;
+    color: #383d41;
 }
 </style>
 {% endblock %}
