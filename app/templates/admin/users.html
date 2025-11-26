@@ -29,20 +29,9 @@
             
             <div class="form-row">
                 <div class="form-group">
-                    <label for="create-ovpn-username">OpenVPN用户名 *</label>
-                    <input type="text" id="create-ovpn-username" name="ovpn_username" required>
-                </div>
-                <div class="form-group">
-                    <label for="create-web-password">Web登录密码 *</label>
-                    <input type="password" id="create-web-password" name="web_password" required>
+                    <label for="create-password">登录密码 *</label>
+                    <input type="password" id="create-password" name="password" required>
                     <small class="form-text text-muted">用户登录Web管理界面使用的密码</small>
-                </div>
-            </div>
-            
-            <div class="form-row">
-                <div class="form-group">
-                    <label for="create-max-devices">最大设备数</label>
-                    <input type="number" id="create-max-devices" name="max_devices" value="2" min="1" max="10">
                 </div>
                 <div class="form-group">
                     <label>&nbsp;</label>
@@ -192,14 +181,12 @@ document.getElementById('createUserForm').addEventListener('submit', async funct
     const data = {
         username: formData.get('username'),
         email: formData.get('email'),
-        ovpn_username: formData.get('ovpn_username'),
-        web_password: formData.get('web_password'),  // 改为web_password
-        max_devices: parseInt(formData.get('max_devices')) || 2
+        password: formData.get('password')  // 只保留密码字段
     };
     
-    // 验证Web密码
-    if (!data.web_password) {
-        showCreateUserMessage('请输入Web登录密码', 'error');
+    // 验证密码
+    if (!data.password) {
+        showCreateUserMessage('请输入登录密码', 'error');
         return;
     }
     
@@ -607,17 +594,7 @@ function deleteUser() {
 document.addEventListener('DOMContentLoaded', function() {
     loadPendingUsers();
     
-    // 自动填充OpenVPN用户名字段
-    const usernameInput = document.getElementById('create-username');
-    const ovpnUsernameInput = document.getElementById('create-ovpn-username');
-    
-    if (usernameInput && ovpnUsernameInput) {
-        usernameInput.addEventListener('input', function() {
-            if (!ovpnUsernameInput.value) {
-                ovpnUsernameInput.value = this.value.toLowerCase().replace(/[^a-z0-9]/g, '_');
-            }
-        });
-    }
+    // 删除自动填充OpenVPN用户名字段的代码，因为不再需要
 });
 </script>
 
