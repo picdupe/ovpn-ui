@@ -1,15 +1,14 @@
-from flask import Flask, render_template, request, jsonify, send_file, session, redirect, url_for
+from flask import Flask, render_template, request, jsonify, session, redirect, url_for
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, UserMixin, login_user, logout_user, login_required, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
 import secrets
 import os
 import subprocess
-from datetime import datetime, timedelta
+from datetime import datetime
 import logging
 
 # ==================== 应用初始化 ====================
-
 app = Flask(__name__)
 app.secret_key = secrets.token_hex(32)
 
@@ -45,7 +44,6 @@ login_manager.init_app(app)
 login_manager.login_view = 'user_login'
 
 # ==================== 数据库模型 ====================
-
 class AdminUser(UserMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(50), unique=True, nullable=False)
@@ -53,22 +51,27 @@ class AdminUser(UserMixin, db.Model):
     email = db.Column(db.String(100))
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
+    @property
+    def user_type(self):
+        return "admin"
+
 class NormalUser(UserMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(50), unique=True, nullable=False)
     email = db.Column(db.String(100), unique=True, nullable=False)
     password_hash = db.Column(db.String(255), nullable=False)
-    email_verified = db.Column(db.Boolean, default=False)
     status = db.Column(db.String(20), default='pending')
     ovpn_username = db.Column(db.String(50))
     ovpn_password = db.Column(db.String(255))
     max_devices = db.Column(db.Integer, default=2)
-    ip_type = db.Column(db.String(10), default='dhcp')
-    static_ip = db.Column(db.String(15))
     password_set = db.Column(db.Boolean, default=False)
     approved_by = db.Column(db.Integer, db.ForeignKey('admin_user.id'))
     approved_at = db.Column(db.DateTime)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    @property
+    def user_type(self):
+        return "user"
 
 class TempDownloadLink(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -82,23 +85,29 @@ class TempDownloadLink(db.Model):
     expires_at = db.Column(db.DateTime)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
+# ==================== Flask-Login ====================
 @login_manager.user_loader
 def load_user(user_id):
-    user = AdminUser.query.get(int(user_id))
-    if user:
-        return user
-    return NormalUser.query.get(int(user_id))
+    # user_id 格式：<type>-<id>，如 admin-1 或 user-5
+    try:
+        user_type, actual_id = user_id.split('-')
+        if user_type == "admin":
+            return AdminUser.query.get(int(actual_id))
+        else:
+            return NormalUser.query.get(int(actual_id))
+    except Exception:
+        return None
 
 # ==================== 数据库初始化 ====================
-
 def init_db():
     with app.app_context():
         db.create_all()
+        # 默认管理员
         admin_user = AdminUser.query.filter_by(username='admin').first()
         if not admin_user:
             default_admin = AdminUser(
                 username='admin',
-                password_hash=generate_password_hash('admin123'),  # 默认密码加密
+                password_hash=generate_password_hash('admin123'),  # 加密
                 email='admin@example.com'
             )
             db.session.add(default_admin)
@@ -107,7 +116,6 @@ def init_db():
         app.logger.info("数据库初始化完成")
 
 # ==================== OpenVPN 工具函数 ====================
-
 def create_ovpn_user(username, password, max_devices=2):
     try:
         script_path = f'{INSTALL_DIR}/scripts/create_ovpn_user.sh'
@@ -127,13 +135,11 @@ def change_ovpn_password(username, new_password):
         return False, '', str(e)
 
 # ==================== 路由 ====================
-
 @app.route('/')
 def index():
     return redirect(url_for('user_login'))
 
 # ---------- 管理员路由 ----------
-
 @app.route('/admin/login', methods=['GET', 'POST'])
 def admin_login():
     if request.method == 'POST':
@@ -141,7 +147,7 @@ def admin_login():
         password = request.json.get('password')
         user = AdminUser.query.filter_by(username=username).first()
         if user and check_password_hash(user.password_hash, password):
-            login_user(user)
+            login_user(user, remember=True)
             return jsonify({'success': True})
         return jsonify({'success': False, 'error': '用户名或密码错误'})
     return render_template('admin/login.html')
@@ -155,33 +161,32 @@ def admin_logout():
 @app.route('/admin/dashboard')
 @login_required
 def admin_dashboard():
-    if not isinstance(current_user, AdminUser):
+    if getattr(current_user, 'user_type', '') != 'admin':
         return redirect(url_for('user_login'))
     return render_template('admin/dashboard.html')
 
 @app.route('/admin/users')
 @login_required
 def admin_users():
-    if not isinstance(current_user, AdminUser):
+    if getattr(current_user, 'user_type', '') != 'admin':
         return redirect(url_for('user_login'))
     return render_template('admin/users.html')
 
 @app.route('/admin/openvpn')
 @login_required
 def admin_openvpn():
-    if not isinstance(current_user, AdminUser):
+    if getattr(current_user, 'user_type', '') != 'admin':
         return redirect(url_for('user_login'))
     return render_template('admin/openvpn.html')
 
 @app.route('/admin')
 @login_required
 def admin_index():
-    if not isinstance(current_user, AdminUser):
+    if getattr(current_user, 'user_type', '') != 'admin':
         return redirect(url_for('user_login'))
     return redirect(url_for('admin_dashboard'))
 
 # ---------- 用户路由 ----------
-
 @app.route('/register', methods=['GET', 'POST'])
 def user_register():
     if request.method == 'POST':
@@ -204,7 +209,7 @@ def user_register():
         new_user = NormalUser(
             username=username,
             email=email,
-            password_hash=generate_password_hash(password),  # 加密存储
+            password_hash=generate_password_hash(password),
             status='pending'
         )
         db.session.add(new_user)
@@ -221,7 +226,7 @@ def user_login():
         user = NormalUser.query.filter_by(username=username).first()
         if user and check_password_hash(user.password_hash, password):
             if user.status == 'approved':
-                login_user(user)
+                login_user(user, remember=True)
                 return jsonify({'success': True})
             else:
                 return jsonify({'success': False, 'error': '账户尚未审核通过'})
@@ -237,7 +242,7 @@ def user_logout():
 @app.route('/user/profile')
 @login_required
 def user_profile():
-    if not isinstance(current_user, NormalUser):
+    if getattr(current_user, 'user_type', '') != 'user':
         return redirect(url_for('user_login'))
     user = NormalUser.query.get(current_user.id)
     return render_template('user/profile.html', user=user)
@@ -249,7 +254,7 @@ def user_index():
 @app.route('/user/change_ovpn_password', methods=['POST'])
 @login_required
 def change_user_ovpn_password():
-    if not isinstance(current_user, NormalUser):
+    if getattr(current_user, 'user_type', '') != 'user':
         return jsonify({'success': False, 'error': '无权限'})
     data = request.json
     new_password = data.get('new_password')
@@ -280,7 +285,6 @@ def change_user_ovpn_password():
         return jsonify({'success': False, 'error': f'OpenVPN密码{action}失败: {stderr}'})
 
 # ==================== 错误处理 ====================
-
 @app.errorhandler(404)
 def not_found(error):
     return jsonify({'error': '资源未找到'}), 404
@@ -290,7 +294,6 @@ def internal_error(error):
     return jsonify({'error': '服务器内部错误'}), 500
 
 # ==================== 启动 ====================
-
 if __name__ == '__main__':
     init_db()
     app.logger.info("启动 OpenVPN WebUI 服务...")
