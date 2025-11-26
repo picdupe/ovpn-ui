@@ -35,49 +35,7 @@
         </div>
     </div>
 
-    <!-- 手动创建用户卡片 -->
-    <div class="card">
-        <div class="card-header">
-            <h2>手动创建用户</h2>
-        </div>
-        <div class="card-body">
-            <form id="createUserForm">
-                <div class="form-row">
-                    <div class="form-group">
-                        <label for="create-username">用户名 *</label>
-                        <input type="text" id="create-username" name="username" required>
-                    </div>
-                    <div class="form-group">
-                        <label for="create-email">邮箱 *</label>
-                        <input type="email" id="create-email" name="email" required>
-                    </div>
-                </div>
-                
-                <div class="form-row">
-                    <div class="form-group">
-                        <label for="create-ovpn-username">OpenVPN用户名 *</label>
-                        <input type="text" id="create-ovpn-username" name="ovpn_username" required>
-                    </div>
-                    <div class="form-group">
-                        <label for="create-password">OpenVPN密码 *</label>
-                        <input type="password" id="create-password" name="password" required>
-                    </div>
-                </div>
-                
-                <div class="form-row">
-                    <div class="form-group">
-                        <label for="create-max-devices">最大设备数</label>
-                        <input type="number" id="create-max-devices" name="max_devices" value="2" min="1" max="10">
-                    </div>
-                    <div class="form-group">
-                        <label>&nbsp;</label>
-                        <button type="submit" class="btn-primary">创建用户</button>
-                    </div>
-                </div>
-            </form>
-            <div id="create-user-message" class="message" style="display: none;"></div>
-        </div>
-    </div>
+    <!-- 已删除手动创建用户卡片 -->
 </div>
 {% endblock %}
 
@@ -118,89 +76,10 @@ async function checkOpenVPNStatus() {
     }
 }
 
-// 手动创建用户
-document.getElementById('createUserForm').addEventListener('submit', async function(e) {
-    e.preventDefault();
-    
-    const formData = new FormData(this);
-    const data = {
-        username: formData.get('username'),
-        email: formData.get('email'),
-        ovpn_username: formData.get('ovpn_username'),
-        password: formData.get('password'),
-        max_devices: parseInt(formData.get('max_devices')) || 2
-    };
-    
-    const submitBtn = this.querySelector('button[type="submit"]');
-    const messageDiv = document.getElementById('create-user-message');
-    
-    // 验证必填字段
-    if (!data.username || !data.email || !data.ovpn_username || !data.password) {
-        showMessage('请填写所有必填字段', 'error');
-        return;
-    }
-    
-    submitBtn.disabled = true;
-    submitBtn.textContent = '创建中...';
-    
-    try {
-        const response = await fetch('/api/users/create', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(data)
-        });
-        
-        const result = await response.json();
-        
-        if (result.success) {
-            showMessage(result.message || '用户创建成功', 'success');
-            this.reset();
-            // 刷新统计信息
-            loadStats();
-        } else {
-            showMessage('创建失败: ' + result.error, 'error');
-        }
-    } catch (error) {
-        console.error('创建用户失败:', error);
-        showMessage('创建请求失败，请稍后重试', 'error');
-    } finally {
-        submitBtn.disabled = false;
-        submitBtn.textContent = '创建用户';
-    }
-});
-
-function showMessage(message, type) {
-    const messageDiv = document.getElementById('create-user-message');
-    messageDiv.textContent = message;
-    messageDiv.className = `message message-${type}`;
-    messageDiv.style.display = 'block';
-    
-    // 3秒后自动隐藏成功消息
-    if (type === 'success') {
-        setTimeout(() => {
-            messageDiv.style.display = 'none';
-        }, 3000);
-    }
-}
-
 // 页面加载时初始化
 document.addEventListener('DOMContentLoaded', function() {
     loadStats();
     checkOpenVPNStatus();
-    
-    // 自动填充OpenVPN用户名字段
-    const usernameInput = document.getElementById('create-username');
-    const ovpnUsernameInput = document.getElementById('create-ovpn-username');
-    
-    if (usernameInput && ovpnUsernameInput) {
-        usernameInput.addEventListener('input', function() {
-            if (!ovpnUsernameInput.value) {
-                ovpnUsernameInput.value = this.value.toLowerCase().replace(/[^a-z0-9]/g, '_');
-            }
-        });
-    }
 });
 </script>
 
@@ -265,57 +144,6 @@ document.addEventListener('DOMContentLoaded', function() {
     gap: 15px;
 }
 
-.card {
-    background: white;
-    border-radius: 8px;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-    margin-bottom: 20px;
-}
-
-.card-header {
-    padding: 20px 20px 0;
-    border-bottom: 1px solid #eee;
-}
-
-.card-header h2 {
-    margin: 0;
-    color: #333;
-}
-
-.card-body {
-    padding: 20px;
-}
-
-.form-row {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 20px;
-    margin-bottom: 15px;
-}
-
-.form-group {
-    display: flex;
-    flex-direction: column;
-}
-
-.form-group label {
-    margin-bottom: 5px;
-    font-weight: bold;
-    color: #333;
-}
-
-.form-group input {
-    padding: 10px;
-    border: 1px solid #ddd;
-    border-radius: 4px;
-    font-size: 14px;
-}
-
-.form-group input:focus {
-    outline: none;
-    border-color: #007bff;
-}
-
 .btn-primary {
     background: #007bff;
     color: white;
@@ -372,10 +200,6 @@ document.addEventListener('DOMContentLoaded', function() {
 }
 
 @media (max-width: 768px) {
-    .form-row {
-        grid-template-columns: 1fr;
-    }
-    
     .stats-cards {
         grid-template-columns: 1fr 1fr;
     }

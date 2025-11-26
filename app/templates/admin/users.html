@@ -9,49 +9,50 @@
         <a href="/admin/dashboard" class="btn-back">返回控制面板</a>
     </header>
 
-    <!-- 手动创建用户卡片 -->
-    <div class="card">
-        <div class="card-header">
-            <h2>手动创建用户</h2>
-        </div>
-        <div class="card-body">
-            <form id="createUserForm">
-                <div class="form-row">
-                    <div class="form-group">
-                        <label for="create-username">用户名 *</label>
-                        <input type="text" id="create-username" name="username" required>
-                    </div>
-                    <div class="form-group">
-                        <label for="create-email">邮箱 *</label>
-                        <input type="email" id="create-email" name="email" required>
-                    </div>
-                </div>
-                
-                <div class="form-row">
-                    <div class="form-group">
-                        <label for="create-ovpn-username">OpenVPN用户名 *</label>
-                        <input type="text" id="create-ovpn-username" name="ovpn_username" required>
-                    </div>
-                    <div class="form-group">
-                        <label for="create-password">OpenVPN密码 *</label>
-                        <input type="password" id="create-password" name="password" required>
-                    </div>
-                </div>
-                
-                <div class="form-row">
-                    <div class="form-group">
-                        <label for="create-max-devices">最大设备数</label>
-                        <input type="number" id="create-max-devices" name="max_devices" value="2" min="1" max="10">
-                    </div>
-                    <div class="form-group">
-                        <label>&nbsp;</label>
-                        <button type="submit" class="btn-primary">创建用户</button>
-                    </div>
-                </div>
-            </form>
-            <div id="createUserMessage" class="message" style="display: none;"></div>
-        </div>
+<!-- 手动创建用户卡片 -->
+<div class="card">
+    <div class="card-header">
+        <h2>手动创建用户</h2>
     </div>
+    <div class="card-body">
+        <form id="createUserForm">
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="create-username">用户名 *</label>
+                    <input type="text" id="create-username" name="username" required>
+                </div>
+                <div class="form-group">
+                    <label for="create-email">邮箱 *</label>
+                    <input type="email" id="create-email" name="email" required>
+                </div>
+            </div>
+            
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="create-ovpn-username">OpenVPN用户名 *</label>
+                    <input type="text" id="create-ovpn-username" name="ovpn_username" required>
+                </div>
+                <div class="form-group">
+                    <label for="create-web-password">Web登录密码 *</label>
+                    <input type="password" id="create-web-password" name="web_password" required>
+                    <small class="form-text text-muted">用户登录Web管理界面使用的密码</small>
+                </div>
+            </div>
+            
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="create-max-devices">最大设备数</label>
+                    <input type="number" id="create-max-devices" name="max_devices" value="2" min="1" max="10">
+                </div>
+                <div class="form-group">
+                    <label>&nbsp;</label>
+                    <button type="submit" class="btn-primary">创建用户</button>
+                </div>
+            </div>
+        </form>
+        <div id="createUserMessage" class="message" style="display: none;"></div>
+    </div>
+</div>
 
     <div class="tabs">
         <button class="tab-btn active" onclick="showTab('pending')">待审核</button>
@@ -192,13 +193,13 @@ document.getElementById('createUserForm').addEventListener('submit', async funct
         username: formData.get('username'),
         email: formData.get('email'),
         ovpn_username: formData.get('ovpn_username'),
-        password: formData.get('password'),
+        web_password: formData.get('web_password'),  // 改为web_password
         max_devices: parseInt(formData.get('max_devices')) || 2
     };
     
-    // 验证密码
-    if (!data.password) {
-        showCreateUserMessage('请输入OpenVPN密码', 'error');
+    // 验证Web密码
+    if (!data.web_password) {
+        showCreateUserMessage('请输入Web登录密码', 'error');
         return;
     }
     
