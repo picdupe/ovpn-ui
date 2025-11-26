@@ -105,16 +105,6 @@
             </div>
             
             <div class="form-group">
-                <label for="ovpn-password">OpenVPN密码 *</label>
-                <input type="password" id="ovpn-password" required>
-            </div>
-            
-            <div class="form-group">
-                <label for="ovpn-password-confirm">确认密码 *</label>
-                <input type="password" id="ovpn-password-confirm" required>
-            </div>
-            
-            <div class="form-group">
                 <label for="max-devices">最大设备数</label>
                 <input type="number" id="max-devices" value="2" min="1" max="10">
             </div>
@@ -439,17 +429,9 @@ document.getElementById('approve-form').addEventListener('submit', function(e) {
     e.preventDefault();
     
     const userId = document.getElementById('approve-user-id').value;
-    const password = document.getElementById('ovpn-password').value;
-    const passwordConfirm = document.getElementById('ovpn-password-confirm').value;
-    
-    if (password !== passwordConfirm) {
-        alert('两次输入的密码不一致');
-        return;
-    }
     
     const data = {
         ovpn_username: document.getElementById('ovpn-username').value,
-        password: password,
         max_devices: parseInt(document.getElementById('max-devices').value) || 2
     };
     
