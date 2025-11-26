@@ -9,6 +9,45 @@
         <a href="/admin/dashboard" class="btn-back">返回控制面板</a>
     </header>
 
+    <!-- 手动创建用户卡片 -->
+    <div class="card mb-4">
+        <div class="card-header">
+            <h5 class="card-title mb-0">手动创建用户</h5>
+        </div>
+        <div class="card-body">
+            <form id="createUserForm">
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="mb-3">
+                            <label class="form-label">用户名 *</label>
+                            <input type="text" class="form-control" name="username" required>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">邮箱 *</label>
+                            <input type="email" class="form-control" name="email" required>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="mb-3">
+                            <label class="form-label">OpenVPN用户名 *</label>
+                            <input type="text" class="form-control" name="ovpn_username" required>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">OpenVPN密码 *</label>
+                            <input type="password" class="form-control" name="password" required>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">最大设备数</label>
+                            <input type="number" class="form-control" name="max_devices" value="2" min="1" max="10">
+                        </div>
+                    </div>
+                </div>
+                <button type="submit" class="btn btn-success">创建用户</button>
+            </form>
+            <div id="createUserMessage" class="mt-2 alert" style="display: none;"></div>
+        </div>
+    </div>
+
     <div class="tabs">
         <button class="tab-btn active" onclick="showTab('pending')">待审核</button>
         <button class="tab-btn" onclick="showTab('approved')">已开通</button>
@@ -40,44 +79,723 @@
 <!-- 审核用户模态框 -->
 <div id="approve-modal" class="modal" style="display: none;">
     <div class="modal-content">
+        <span class="close" onclick="closeApproveModal()">&times;</span>
         <h2>开通用户VPN访问</h2>
         <form id="approve-form">
             <input type="hidden" id="approve-user-id">
             
             <div class="form-group">
                 <label>用户名:</label>
-                <span id="approve-username"></span>
+                <span id="approve-username" class="form-control-static"></span>
             </div>
             
             <div class="form-group">
-                <label>OpenVPN用户名:</label>
-                <input type="text" id="ovpn-username" required>
+                <label>邮箱:</label>
+                <span id="approve-email" class="form-control-static"></span>
             </div>
             
             <div class="form-group">
-                <label>OpenVPN密码:</label>
-                <input type="password" id="ovpn-password" required>
+                <label for="ovpn-username">OpenVPN用户名 *</label>
+                <input type="text" id="ovpn-username" class="form-control" required>
+                <small class="form-text text-muted">OpenVPN认证使用的用户名</small>
             </div>
             
             <div class="form-group">
-                <label>确认密码:</label>
-                <input type="password" id="ovpn-password-confirm" required>
+                <label for="ovpn-password">OpenVPN密码 *</label>
+                <input type="password" id="ovpn-password" class="form-control" required>
             </div>
             
             <div class="form-group">
-                <label>最大设备数:</label>
-                <input type="number" id="max-devices" value="2" min="1" max="10">
+                <label for="ovpn-password-confirm">确认密码 *</label>
+                <input type="password" id="ovpn-password-confirm" class="form-control" required>
+            </div>
+            
+            <div class="form-group">
+                <label for="max-devices">最大设备数</label>
+                <input type="number" id="max-devices" class="form-control" value="2" min="1" max="10">
+                <small class="form-text text-muted">允许同时连接的设备数量</small>
             </div>
             
             <div class="form-actions">
-                <button type="button" onclick="closeApproveModal()">取消</button>
-                <button type="submit" class="btn-primary">开通访问</button>
+                <button type="button" class="btn btn-secondary" onclick="closeApproveModal()">取消</button>
+                <button type="submit" class="btn btn-primary">开通访问</button>
             </div>
         </form>
+    </div>
+</div>
+
+<!-- 用户操作模态框 -->
+<div id="user-actions-modal" class="modal" style="display: none;">
+    <div class="modal-content">
+        <span class="close" onclick="closeUserActionsModal()">&times;</span>
+        <h2>用户操作</h2>
+        <div class="modal-body">
+            <input type="hidden" id="action-user-id">
+            <div class="form-group">
+                <label>用户名:</label>
+                <span id="action-username" class="form-control-static"></span>
+            </div>
+            <div class="form-group">
+                <label>状态:</label>
+                <span id="action-status" class="form-control-static"></span>
+            </div>
+            <div class="action-buttons">
+                <button type="button" class="btn btn-info" onclick="generateDownloadLink()">生成下载链接</button>
+                <button type="button" class="btn btn-warning" onclick="showResetPasswordForm()">重置密码</button>
+                <button type="button" class="btn btn-danger" onclick="deleteUser()">删除用户</button>
+            </div>
+            
+            <!-- 重置密码表单 -->
+            <div id="reset-password-form" style="display: none; margin-top: 20px;">
+                <h4>重置OpenVPN密码</h4>
+                <div class="form-group">
+                    <label for="new-password">新密码 *</label>
+                    <input type="password" id="new-password" class="form-control" required>
+                </div>
+                <div class="form-group">
+                    <label for="confirm-new-password">确认新密码 *</label>
+                    <input type="password" id="confirm-new-password" class="form-control" required>
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="btn btn-secondary" onclick="hideResetPasswordForm()">取消</button>
+                    <button type="button" class="btn btn-primary" onclick="resetPassword()">重置密码</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 下载链接模态框 -->
+<div id="download-modal" class="modal" style="display: none;">
+    <div class="modal-content">
+        <span class="close" onclick="closeDownloadModal()">&times;</span>
+        <h2>配置文件下载</h2>
+        <div class="modal-body">
+            <p>配置文件下载链接已生成，链接将在5分钟后失效：</p>
+            <div class="form-group">
+                <label>下载链接:</label>
+                <a id="download-link" href="#" target="_blank" class="form-control">点击下载配置文件</a>
+            </div>
+            <div class="form-group">
+                <label>过期时间:</label>
+                <span id="expires-at" class="form-control-static"></span>
+            </div>
+            <div class="alert alert-warning">
+                <small>请注意：此链接只能下载一次，请妥善保管配置文件。</small>
+            </div>
+        </div>
     </div>
 </div>
 {% endblock %}
 
 {% block scripts %}
-<script src="{{ url_for('static', filename='js/users.js') }}"></script>
+<script>
+// 手动创建用户功能
+document.getElementById('createUserForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+    
+    const formData = new FormData(this);
+    const data = {
+        username: formData.get('username'),
+        email: formData.get('email'),
+        ovpn_username: formData.get('ovpn_username'),
+        password: formData.get('password'),
+        max_devices: parseInt(formData.get('max_devices')) || 2
+    };
+    
+    // 验证密码
+    if (!data.password) {
+        showCreateUserMessage('请输入OpenVPN密码', 'danger');
+        return;
+    }
+    
+    const submitBtn = this.querySelector('button[type="submit"]');
+    submitBtn.disabled = true;
+    submitBtn.textContent = '创建中...';
+    
+    fetch('/api/users/create', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(data)
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showCreateUserMessage(data.message || '用户创建成功', 'success');
+            this.reset();
+            // 刷新用户列表
+            loadPendingUsers();
+            loadApprovedUsers();
+            loadAllUsers();
+        } else {
+            showCreateUserMessage('创建失败: ' + data.error, 'danger');
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        showCreateUserMessage('创建请求失败', 'danger');
+    })
+    .finally(() => {
+        submitBtn.disabled = false;
+        submitBtn.textContent = '创建用户';
+    });
+});
+
+function showCreateUserMessage(message, type) {
+    const messageDiv = document.getElementById('createUserMessage');
+    messageDiv.textContent = message;
+    messageDiv.className = `mt-2 alert alert-${type}`;
+    messageDiv.style.display = 'block';
+    
+    // 3秒后自动隐藏成功消息
+    if (type === 'success') {
+        setTimeout(() => {
+            messageDiv.style.display = 'none';
+        }, 3000);
+    }
+}
+
+// 标签页切换功能
+function showTab(tabName) {
+    // 隐藏所有标签内容
+    document.querySelectorAll('.tab-content').forEach(tab => {
+        tab.classList.remove('active');
+    });
+    
+    // 移除所有标签按钮的active类
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+        btn.classList.remove('active');
+    });
+    
+    // 显示选中的标签内容
+    document.getElementById(`${tabName}-tab`).classList.add('active');
+    
+    // 激活选中的标签按钮
+    event.target.classList.add('active');
+    
+    // 加载对应的用户数据
+    switch(tabName) {
+        case 'pending':
+            loadPendingUsers();
+            break;
+        case 'approved':
+            loadApprovedUsers();
+            break;
+        case 'all':
+            loadAllUsers();
+            break;
+    }
+}
+
+// 加载待审核用户
+function loadPendingUsers() {
+    fetch('/api/users/pending')
+        .then(response => response.json())
+        .then(users => {
+            const container = document.getElementById('pending-users-list');
+            container.innerHTML = '';
+            
+            if (users.length === 0) {
+                container.innerHTML = '<div class="no-users">暂无待审核用户</div>';
+                return;
+            }
+            
+            users.forEach(user => {
+                const userElement = createUserElement(user, 'pending');
+                container.appendChild(userElement);
+            });
+        })
+        .catch(error => {
+            console.error('Error loading pending users:', error);
+            document.getElementById('pending-users-list').innerHTML = 
+                '<div class="error">加载失败</div>';
+        });
+}
+
+// 加载已开通用户
+function loadApprovedUsers() {
+    fetch('/api/users/list')
+        .then(response => response.json())
+        .then(data => {
+            const container = document.getElementById('approved-users-list');
+            container.innerHTML = '';
+            
+            if (!data.success) {
+                container.innerHTML = '<div class="error">加载失败: ' + data.error + '</div>';
+                return;
+            }
+            
+            const approvedUsers = data.users.filter(user => user.status === 'approved');
+            
+            if (approvedUsers.length === 0) {
+                container.innerHTML = '<div class="no-users">暂无已开通用户</div>';
+                return;
+            }
+            
+            approvedUsers.forEach(user => {
+                const userElement = createUserElement(user, 'approved');
+                container.appendChild(userElement);
+            });
+        })
+        .catch(error => {
+            console.error('Error loading approved users:', error);
+            document.getElementById('approved-users-list').innerHTML = 
+                '<div class="error">加载失败</div>';
+        });
+}
+
+// 加载所有用户
+function loadAllUsers() {
+    fetch('/api/users/list')
+        .then(response => response.json())
+        .then(data => {
+            const container = document.getElementById('all-users-list');
+            container.innerHTML = '';
+            
+            if (!data.success) {
+                container.innerHTML = '<div class="error">加载失败: ' + data.error + '</div>';
+                return;
+            }
+            
+            if (data.users.length === 0) {
+                container.innerHTML = '<div class="no-users">暂无用户</div>';
+                return;
+            }
+            
+            data.users.forEach(user => {
+                const userElement = createUserElement(user, 'all');
+                container.appendChild(userElement);
+            });
+        })
+        .catch(error => {
+            console.error('Error loading all users:', error);
+            document.getElementById('all-users-list').innerHTML = 
+                '<div class="error">加载失败</div>';
+        });
+}
+
+// 创建用户元素
+function createUserElement(user, listType) {
+    const userDiv = document.createElement('div');
+    userDiv.className = 'user-card';
+    userDiv.innerHTML = `
+        <div class="user-info">
+            <div class="user-main">
+                <h4>${user.username}</h4>
+                <span class="user-email">${user.email}</span>
+            </div>
+            <div class="user-details">
+                <span class="status-badge status-${user.status}">${getStatusText(user.status)}</span>
+                ${user.ovpn_username ? `<span class="ovpn-username">OpenVPN: ${user.ovpn_username}</span>` : ''}
+                ${user.max_devices ? `<span class="max-devices">最大设备: ${user.max_devices}</span>` : ''}
+                <span class="create-time">注册: ${new Date(user.created_at).toLocaleDateString()}</span>
+            </div>
+        </div>
+        <div class="user-actions">
+            ${listType === 'pending' ? `
+                <button class="btn btn-success btn-sm" onclick="openApproveModal(${user.id}, '${user.username}', '${user.email}')">审核开通</button>
+                <button class="btn btn-danger btn-sm" onclick="rejectUser(${user.id})">拒绝</button>
+            ` : ''}
+            ${listType === 'approved' || listType === 'all' ? `
+                <button class="btn btn-info btn-sm" onclick="openUserActions(${user.id}, '${user.username}', '${user.status}')">管理</button>
+            ` : ''}
+        </div>
+    `;
+    return userDiv;
+}
+
+// 获取状态文本
+function getStatusText(status) {
+    const statusMap = {
+        'pending': '待审核',
+        'approved': '已开通',
+        'rejected': '已拒绝'
+    };
+    return statusMap[status] || status;
+}
+
+// 打开审核模态框
+function openApproveModal(userId, username, email) {
+    document.getElementById('approve-user-id').value = userId;
+    document.getElementById('approve-username').textContent = username;
+    document.getElementById('approve-email').textContent = email;
+    document.getElementById('ovpn-username').value = username.toLowerCase().replace(/[^a-z0-9]/g, '_');
+    document.getElementById('approve-modal').style.display = 'block';
+}
+
+// 关闭审核模态框
+function closeApproveModal() {
+    document.getElementById('approve-modal').style.display = 'none';
+    document.getElementById('approve-form').reset();
+}
+
+// 提交审核表单
+document.getElementById('approve-form').addEventListener('submit', function(e) {
+    e.preventDefault();
+    
+    const userId = document.getElementById('approve-user-id').value;
+    const password = document.getElementById('ovpn-password').value;
+    const passwordConfirm = document.getElementById('ovpn-password-confirm').value;
+    
+    if (password !== passwordConfirm) {
+        alert('两次输入的密码不一致');
+        return;
+    }
+    
+    const data = {
+        ovpn_username: document.getElementById('ovpn-username').value,
+        password: password,
+        max_devices: parseInt(document.getElementById('max-devices').value) || 2
+    };
+    
+    fetch(`/api/users/${userId}/approve`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(data)
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert('用户开通成功');
+            closeApproveModal();
+            loadPendingUsers();
+            loadApprovedUsers();
+            loadAllUsers();
+        } else {
+            alert('开通失败: ' + data.error);
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('开通请求失败');
+    });
+});
+
+// 拒绝用户
+function rejectUser(userId) {
+    if (!confirm('确定要拒绝此用户的申请吗？')) {
+        return;
+    }
+    
+    fetch(`/api/users/${userId}/reject`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert('用户已拒绝');
+            loadPendingUsers();
+            loadAllUsers();
+        } else {
+            alert('操作失败: ' + data.error);
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('操作请求失败');
+    });
+}
+
+// 打开用户操作模态框
+function openUserActions(userId, username, status) {
+    document.getElementById('action-user-id').value = userId;
+    document.getElementById('action-username').textContent = username;
+    document.getElementById('action-status').textContent = getStatusText(status);
+    document.getElementById('user-actions-modal').style.display = 'block';
+}
+
+// 关闭用户操作模态框
+function closeUserActionsModal() {
+    document.getElementById('user-actions-modal').style.display = 'none';
+    hideResetPasswordForm();
+}
+
+// 生成下载链接
+function generateDownloadLink() {
+    const userId = document.getElementById('action-user-id').value;
+    const username = document.getElementById('action-username').textContent;
+    
+    fetch(`/api/users/${username}/generate_download`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            // 显示下载链接模态框
+            document.getElementById('download-link').href = data.download_url;
+            document.getElementById('download-link').textContent = data.download_url;
+            document.getElementById('expires-at').textContent = new Date(data.expires_at).toLocaleString();
+            document.getElementById('user-actions-modal').style.display = 'none';
+            document.getElementById('download-modal').style.display = 'block';
+        } else {
+            alert('生成下载链接失败: ' + data.error);
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('生成下载链接请求失败');
+    });
+}
+
+// 关闭下载模态框
+function closeDownloadModal() {
+    document.getElementById('download-modal').style.display = 'none';
+}
+
+// 显示重置密码表单
+function showResetPasswordForm() {
+    document.getElementById('reset-password-form').style.display = 'block';
+}
+
+// 隐藏重置密码表单
+function hideResetPasswordForm() {
+    document.getElementById('reset-password-form').style.display = 'none';
+    document.getElementById('new-password').value = '';
+    document.getElementById('confirm-new-password').value = '';
+}
+
+// 重置密码
+function resetPassword() {
+    const newPassword = document.getElementById('new-password').value;
+    const confirmPassword = document.getElementById('confirm-new-password').value;
+    const username = document.getElementById('action-username').textContent;
+    
+    if (!newPassword || !confirmPassword) {
+        alert('请输入新密码和确认密码');
+        return;
+    }
+    
+    if (newPassword !== confirmPassword) {
+        alert('两次输入的密码不一致');
+        return;
+    }
+    
+    // 这里需要调用重置密码的API
+    alert('重置密码功能待实现 - 用户名: ' + username + ', 新密码: ' + newPassword);
+}
+
+// 删除用户
+function deleteUser() {
+    const userId = document.getElementById('action-user-id').value;
+    const username = document.getElementById('action-username').textContent;
+    
+    if (!confirm(`确定要删除用户 "${username}" 吗？此操作不可撤销！`)) {
+        return;
+    }
+    
+    fetch(`/api/users/${userId}/delete`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert('用户删除成功');
+            closeUserActionsModal();
+            loadPendingUsers();
+            loadApprovedUsers();
+            loadAllUsers();
+        } else {
+            alert('删除失败: ' + data.error);
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('删除请求失败');
+    });
+}
+
+// 页面加载时初始化
+document.addEventListener('DOMContentLoaded', function() {
+    loadPendingUsers();
+});
+</script>
+
+<style>
+.users-management {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 20px;
+}
+
+.page-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 30px;
+}
+
+.btn-back {
+    padding: 8px 16px;
+    background: #6c757d;
+    color: white;
+    text-decoration: none;
+    border-radius: 4px;
+}
+
+.tabs {
+    display: flex;
+    margin-bottom: 20px;
+    border-bottom: 1px solid #dee2e6;
+}
+
+.tab-btn {
+    padding: 10px 20px;
+    background: none;
+    border: none;
+    border-bottom: 2px solid transparent;
+    cursor: pointer;
+}
+
+.tab-btn.active {
+    border-bottom-color: #007bff;
+    color: #007bff;
+}
+
+.tab-content {
+    display: none;
+}
+
+.tab-content.active {
+    display: block;
+}
+
+.users-list {
+    display: grid;
+    gap: 15px;
+}
+
+.user-card {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 15px;
+    border: 1px solid #dee2e6;
+    border-radius: 8px;
+    background: white;
+}
+
+.user-info {
+    flex: 1;
+}
+
+.user-main h4 {
+    margin: 0 0 5px 0;
+    color: #333;
+}
+
+.user-email {
+    color: #666;
+    font-size: 0.9em;
+}
+
+.user-details {
+    margin-top: 8px;
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.status-badge {
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-size: 0.8em;
+    font-weight: bold;
+}
+
+.status-pending {
+    background: #fff3cd;
+    color: #856404;
+}
+
+.status-approved {
+    background: #d1ecf1;
+    color: #0c5460;
+}
+
+.status-rejected {
+    background: #f8d7da;
+    color: #721c24;
+}
+
+.ovpn-username, .max-devices, .create-time {
+    font-size: 0.8em;
+    color: #666;
+    background: #f8f9fa;
+    padding: 2px 6px;
+    border-radius: 4px;
+}
+
+.user-actions {
+    display: flex;
+    gap: 8px;
+}
+
+.modal {
+    position: fixed;
+    z-index: 1000;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0,0,0,0.5);
+}
+
+.modal-content {
+    background-color: white;
+    margin: 5% auto;
+    padding: 20px;
+    border-radius: 8px;
+    width: 90%;
+    max-width: 500px;
+    position: relative;
+}
+
+.close {
+    position: absolute;
+    right: 15px;
+    top: 15px;
+    font-size: 24px;
+    cursor: pointer;
+}
+
+.form-group {
+    margin-bottom: 15px;
+}
+
+.form-control-static {
+    display: block;
+    padding: 6px 0;
+    font-weight: bold;
+}
+
+.action-buttons {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.no-users, .error {
+    text-align: center;
+    padding: 40px;
+    color: #666;
+    font-style: italic;
+}
+
+.error {
+    color: #dc3545;
+}
+</style>
 {% endblock %}

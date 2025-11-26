@@ -515,3 +515,61 @@ if __name__ == '__main__':
     init_db()
     app.logger.info("启动 OpenVPN WebUI 服务...")
     app.run(host='0.0.0.0', port=5000, debug=False)
+@app.route('/api/users/create', methods=['POST'])
+@login_required
+def create_user_manual():
+    """管理员手动创建用户"""
+    try:
+        data = request.json
+        username = data.get('username')
+        email = data.get('email')
+        ovpn_username = data.get('ovpn_username')
+        password = data.get('password')
+        max_devices = data.get('max_devices', 2)
+        
+        # 验证必填字段
+        if not all([username, email, ovpn_username, password]):
+            return jsonify({
+                'success': False,
+                'error': '请填写所有必填字段'
+            })
+        
+        # 检查用户是否已存在
+        existing_user = NormalUser.query.filter(
+            (NormalUser.username == username) | 
+            (NormalUser.email == email) |
+            (NormalUser.ovpn_username == ovpn_username)
+        ).first()
+        
+        if existing_user:
+            return jsonify({
+                'success': False,
+                'error': '用户名、邮箱或OpenVPN用户名已存在'
+            })
+        
+        # 创建OpenVPN用户
+        success, stdout, stderr = create_ovpn_user(ovpn_username, password, max_devices)
+        
+        if success:
+            # 创建数据库记录
+            new_user = NormalUser(
+                username=username,
+                email=email,
+                ovpn_username=ovpn_username,
+                max_devices=max_devices,
+                status='approved',
+                password_set=True,
+                approved_by=current_user.id,
+                approved_at=datetime.utcnow()
+            )
+            db.session.add(new_user)
+            db.session.commit()
+            
+            app.logger.info(f"管理员手动创建用户: {username} (OpenVPN用户: {ovpn_username})")
+            return jsonify({'success': True, 'message': '用户创建成功'})
+        else:
+            return jsonify({'success': False, 'error': f'创建OpenVPN用户失败: {stderr}'})
+            
+    except Exception as e:
+        app.logger.error(f"手动创建用户失败: {e}")
+        return jsonify({'success': False, 'error': str(e)})

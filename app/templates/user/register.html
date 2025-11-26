@@ -11,16 +11,21 @@
                     <h4 class="mb-0">用户注册</h4>
                 </div>
                 <div class="card-body">
+                    <!-- 添加消息显示区域 -->
+                    <div id="message" class="alert" style="display: none;"></div>
+                    
                     <form id="registerForm">
                         <div class="mb-3">
-                            <label for="username" class="form-label">用户名</label>
+                            <label for="username" class="form-label">用户名 *</label>
                             <input type="text" class="form-control" id="username" name="username" required>
+                            <div class="form-text">请输入您的用户名</div>
                         </div>
                         <div class="mb-3">
-                            <label for="email" class="form-label">邮箱地址</label>
+                            <label for="email" class="form-label">邮箱地址 *</label>
                             <input type="email" class="form-control" id="email" name="email" required>
+                            <div class="form-text">请输入有效的邮箱地址</div>
                         </div>
-                        <button type="submit" class="btn btn-primary w-100">注册</button>
+                        <button type="submit" class="btn btn-primary w-100" id="submitBtn">注册</button>
                     </form>
                     <div class="mt-3 text-center">
                         <p>管理员请点击 <a href="/admin/login">这里登录</a></p>
@@ -34,6 +39,68 @@
 
 {% block scripts %}
 <script>
-// 这里可以添加处理注册表单提交的JavaScript代码
+document.getElementById('registerForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+    
+    const submitBtn = document.getElementById('submitBtn');
+    const messageDiv = document.getElementById('message');
+    
+    // 获取表单数据
+    const formData = {
+        username: document.getElementById('username').value,
+        email: document.getElementById('email').value
+    };
+    
+    // 验证输入
+    if (!formData.username || !formData.email) {
+        showMessage('请输入用户名和邮箱地址', 'danger');
+        return;
+    }
+    
+    // 禁用提交按钮
+    submitBtn.disabled = true;
+    submitBtn.textContent = '注册中...';
+    
+    // 发送注册请求
+    fetch('/register', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(formData)
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showMessage('注册成功！请等待管理员审核。', 'success');
+            document.getElementById('registerForm').reset();
+        } else {
+            showMessage('注册失败: ' + data.error, 'danger');
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        showMessage('注册请求失败，请稍后重试', 'danger');
+    })
+    .finally(() => {
+        // 恢复提交按钮
+        submitBtn.disabled = false;
+        submitBtn.textContent = '注册';
+    });
+});
+
+function showMessage(message, type) {
+    const messageDiv = document.getElementById('message');
+    messageDiv.textContent = message;
+    messageDiv.className = `alert alert-${type}`;
+    messageDiv.style.display = 'block';
+    
+    // 3秒后自动隐藏成功消息
+    if (type === 'success') {
+        setTimeout(() => {
+            messageDiv.style.display = 'none';
+        }, 3000);
+    }
+}
 </script>
 {% endblock %}
