@@ -30,7 +30,13 @@
                                 </div>
                                 <div class="info-item">
                                     <label>注册时间:</label>
-                                    <span id="user-created">{{ user.created_at.strftime('%Y-%m-%d %H:%M') if user and user.created_at else '' }}</span>
+                                    <span id="user-created">
+                                        {% if user and user.created_at %}
+                                            {{ user.created_at.strftime('%Y-%m-%d %H:%M') }}
+                                        {% else %}
+                                            ''
+                                        {% endif %}
+                                    </span>
                                 </div>
                                 <div class="info-item">
                                     <label>账户状态:</label>
@@ -59,11 +65,23 @@
                             <div class="ovpn-info">
                                 <div class="info-item">
                                     <label>OpenVPN用户名:</label>
-                                    <span id="ovpn-username">{{ user.ovpn_username if user.ovpn_username else '未设置' }}</span>
+                                    <span id="ovpn-username">
+                                        {% if user.ovpn_username %}
+                                            {{ user.ovpn_username }}
+                                        {% else %}
+                                            未设置
+                                        {% endif %}
+                                    </span>
                                 </div>
                                 <div class="info-item">
                                     <label>最大设备数:</label>
-                                    <span id="max-devices">{{ user.max_devices if user.max_devices else 2 }}</span>
+                                    <span id="max-devices">
+                                        {% if user.max_devices %}
+                                            {{ user.max_devices }}
+                                        {% else %}
+                                            2
+                                        {% endif %}
+                                    </span>
                                 </div>
                                 <div class="info-item">
                                     <label>开通时间:</label>
