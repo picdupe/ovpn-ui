@@ -331,11 +331,6 @@ function loadConnectionStatus() {
 
 // 页面加载时初始化
 document.addEventListener('DOMContentLoaded', function() {
-    // 如果用户未登录，跳转到登录页面
-    {% if not user %}
-    window.location.href = '/user/login';
-    {% endif %}
-    
     // 加载连接状态（如果用户已开通）
     {% if user and user.status == 'approved' %}
     loadConnectionStatus();

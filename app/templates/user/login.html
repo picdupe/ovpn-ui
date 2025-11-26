@@ -44,17 +44,13 @@ document.getElementById('loginForm').addEventListener('submit', async function(e
         password: document.getElementById('password').value
     };
     
-    if (!formData.username || !formData.password) {
-        showMessage('请输入用户名和密码', 'error');
-        return;
-    }
-    
     submitBtn.disabled = true;
     submitBtn.textContent = '登录中...';
     
     try {
         const response = await fetch('/user/login', {
             method: 'POST',
+            credentials: 'include',    // ★ 必须加
             headers: {
                 'Content-Type': 'application/json'
             },
@@ -64,21 +60,18 @@ document.getElementById('loginForm').addEventListener('submit', async function(e
         const result = await response.json();
         
         if (result.success) {
-            showMessage('登录成功！正在跳转...', 'success');
-            setTimeout(() => {
-                window.location.href = '/user/profile';
-            }, 1000);
+            window.location.href = '/user/profile';
         } else {
             showMessage('登录失败: ' + result.error, 'error');
         }
     } catch (error) {
-        console.error('Error:', error);
         showMessage('登录请求失败，请稍后重试', 'error');
     } finally {
         submitBtn.disabled = false;
         submitBtn.textContent = '登录';
     }
 });
+
 
 function showMessage(message, type) {
     const messageDiv = document.getElementById('message');
