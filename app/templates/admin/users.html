@@ -10,41 +10,46 @@
     </header>
 
     <!-- 手动创建用户卡片 -->
-    <div class="card mb-4">
+    <div class="card">
         <div class="card-header">
-            <h5 class="card-title mb-0">手动创建用户</h5>
+            <h2>手动创建用户</h2>
         </div>
         <div class="card-body">
             <form id="createUserForm">
-                <div class="row">
-                    <div class="col-md-6">
-                        <div class="mb-3">
-                            <label class="form-label">用户名 *</label>
-                            <input type="text" class="form-control" name="username" required>
-                        </div>
-                        <div class="mb-3">
-                            <label class="form-label">邮箱 *</label>
-                            <input type="email" class="form-control" name="email" required>
-                        </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="create-username">用户名 *</label>
+                        <input type="text" id="create-username" name="username" required>
                     </div>
-                    <div class="col-md-6">
-                        <div class="mb-3">
-                            <label class="form-label">OpenVPN用户名 *</label>
-                            <input type="text" class="form-control" name="ovpn_username" required>
-                        </div>
-                        <div class="mb-3">
-                            <label class="form-label">OpenVPN密码 *</label>
-                            <input type="password" class="form-control" name="password" required>
-                        </div>
-                        <div class="mb-3">
-                            <label class="form-label">最大设备数</label>
-                            <input type="number" class="form-control" name="max_devices" value="2" min="1" max="10">
-                        </div>
+                    <div class="form-group">
+                        <label for="create-email">邮箱 *</label>
+                        <input type="email" id="create-email" name="email" required>
                     </div>
                 </div>
-                <button type="submit" class="btn btn-success">创建用户</button>
+                
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="create-ovpn-username">OpenVPN用户名 *</label>
+                        <input type="text" id="create-ovpn-username" name="ovpn_username" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="create-password">OpenVPN密码 *</label>
+                        <input type="password" id="create-password" name="password" required>
+                    </div>
+                </div>
+                
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="create-max-devices">最大设备数</label>
+                        <input type="number" id="create-max-devices" name="max_devices" value="2" min="1" max="10">
+                    </div>
+                    <div class="form-group">
+                        <label>&nbsp;</label>
+                        <button type="submit" class="btn-primary">创建用户</button>
+                    </div>
+                </div>
             </form>
-            <div id="createUserMessage" class="mt-2 alert" style="display: none;"></div>
+            <div id="createUserMessage" class="message" style="display: none;"></div>
         </div>
     </div>
 
@@ -96,29 +101,27 @@
             
             <div class="form-group">
                 <label for="ovpn-username">OpenVPN用户名 *</label>
-                <input type="text" id="ovpn-username" class="form-control" required>
-                <small class="form-text text-muted">OpenVPN认证使用的用户名</small>
+                <input type="text" id="ovpn-username" required>
             </div>
             
             <div class="form-group">
                 <label for="ovpn-password">OpenVPN密码 *</label>
-                <input type="password" id="ovpn-password" class="form-control" required>
+                <input type="password" id="ovpn-password" required>
             </div>
             
             <div class="form-group">
                 <label for="ovpn-password-confirm">确认密码 *</label>
-                <input type="password" id="ovpn-password-confirm" class="form-control" required>
+                <input type="password" id="ovpn-password-confirm" required>
             </div>
             
             <div class="form-group">
                 <label for="max-devices">最大设备数</label>
-                <input type="number" id="max-devices" class="form-control" value="2" min="1" max="10">
-                <small class="form-text text-muted">允许同时连接的设备数量</small>
+                <input type="number" id="max-devices" value="2" min="1" max="10">
             </div>
             
             <div class="form-actions">
-                <button type="button" class="btn btn-secondary" onclick="closeApproveModal()">取消</button>
-                <button type="submit" class="btn btn-primary">开通访问</button>
+                <button type="button" class="btn-secondary" onclick="closeApproveModal()">取消</button>
+                <button type="submit" class="btn-primary">开通访问</button>
             </div>
         </form>
     </div>
@@ -140,9 +143,9 @@
                 <span id="action-status" class="form-control-static"></span>
             </div>
             <div class="action-buttons">
-                <button type="button" class="btn btn-info" onclick="generateDownloadLink()">生成下载链接</button>
-                <button type="button" class="btn btn-warning" onclick="showResetPasswordForm()">重置密码</button>
-                <button type="button" class="btn btn-danger" onclick="deleteUser()">删除用户</button>
+                <button type="button" class="btn-info" onclick="generateDownloadLink()">生成下载链接</button>
+                <button type="button" class="btn-warning" onclick="showResetPasswordForm()">重置密码</button>
+                <button type="button" class="btn-danger" onclick="deleteUser()">删除用户</button>
             </div>
             
             <!-- 重置密码表单 -->
@@ -150,15 +153,15 @@
                 <h4>重置OpenVPN密码</h4>
                 <div class="form-group">
                     <label for="new-password">新密码 *</label>
-                    <input type="password" id="new-password" class="form-control" required>
+                    <input type="password" id="new-password" required>
                 </div>
                 <div class="form-group">
                     <label for="confirm-new-password">确认新密码 *</label>
-                    <input type="password" id="confirm-new-password" class="form-control" required>
+                    <input type="password" id="confirm-new-password" required>
                 </div>
                 <div class="form-actions">
-                    <button type="button" class="btn btn-secondary" onclick="hideResetPasswordForm()">取消</button>
-                    <button type="button" class="btn btn-primary" onclick="resetPassword()">重置密码</button>
+                    <button type="button" class="btn-secondary" onclick="hideResetPasswordForm()">取消</button>
+                    <button type="button" class="btn-primary" onclick="resetPassword()">重置密码</button>
                 </div>
             </div>
         </div>
@@ -174,13 +177,13 @@
             <p>配置文件下载链接已生成，链接将在5分钟后失效：</p>
             <div class="form-group">
                 <label>下载链接:</label>
-                <a id="download-link" href="#" target="_blank" class="form-control">点击下载配置文件</a>
+                <a id="download-link" href="#" target="_blank" class="download-link">点击下载配置文件</a>
             </div>
             <div class="form-group">
                 <label>过期时间:</label>
                 <span id="expires-at" class="form-control-static"></span>
             </div>
-            <div class="alert alert-warning">
+            <div class="message message-warning">
                 <small>请注意：此链接只能下载一次，请妥善保管配置文件。</small>
             </div>
         </div>
@@ -191,7 +194,7 @@
 {% block scripts %}
 <script>
 // 手动创建用户功能
-document.getElementById('createUserForm').addEventListener('submit', function(e) {
+document.getElementById('createUserForm').addEventListener('submit', async function(e) {
     e.preventDefault();
     
     const formData = new FormData(this);
@@ -205,7 +208,7 @@ document.getElementById('createUserForm').addEventListener('submit', function(e)
     
     // 验证密码
     if (!data.password) {
-        showCreateUserMessage('请输入OpenVPN密码', 'danger');
+        showCreateUserMessage('请输入OpenVPN密码', 'error');
         return;
     }
     
@@ -213,40 +216,40 @@ document.getElementById('createUserForm').addEventListener('submit', function(e)
     submitBtn.disabled = true;
     submitBtn.textContent = '创建中...';
     
-    fetch('/api/users/create', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(data)
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            showCreateUserMessage(data.message || '用户创建成功', 'success');
+    try {
+        const response = await fetch('/api/users/create', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(data)
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            showCreateUserMessage(result.message || '用户创建成功', 'success');
             this.reset();
             // 刷新用户列表
             loadPendingUsers();
             loadApprovedUsers();
             loadAllUsers();
         } else {
-            showCreateUserMessage('创建失败: ' + data.error, 'danger');
+            showCreateUserMessage('创建失败: ' + result.error, 'error');
         }
-    })
-    .catch(error => {
+    } catch (error) {
         console.error('Error:', error);
-        showCreateUserMessage('创建请求失败', 'danger');
-    })
-    .finally(() => {
+        showCreateUserMessage('创建请求失败', 'error');
+    } finally {
         submitBtn.disabled = false;
         submitBtn.textContent = '创建用户';
-    });
+    }
 });
 
 function showCreateUserMessage(message, type) {
     const messageDiv = document.getElementById('createUserMessage');
     messageDiv.textContent = message;
-    messageDiv.className = `mt-2 alert alert-${type}`;
+    messageDiv.className = `message message-${type}`;
     messageDiv.style.display = 'block';
     
     // 3秒后自动隐藏成功消息
@@ -395,11 +398,11 @@ function createUserElement(user, listType) {
         </div>
         <div class="user-actions">
             ${listType === 'pending' ? `
-                <button class="btn btn-success btn-sm" onclick="openApproveModal(${user.id}, '${user.username}', '${user.email}')">审核开通</button>
-                <button class="btn btn-danger btn-sm" onclick="rejectUser(${user.id})">拒绝</button>
+                <button class="btn-success" onclick="openApproveModal(${user.id}, '${user.username}', '${user.email}')">审核开通</button>
+                <button class="btn-danger" onclick="rejectUser(${user.id})">拒绝</button>
             ` : ''}
             ${listType === 'approved' || listType === 'all' ? `
-                <button class="btn btn-info btn-sm" onclick="openUserActions(${user.id}, '${user.username}', '${user.status}')">管理</button>
+                <button class="btn-info" onclick="openUserActions(${user.id}, '${user.username}', '${user.status}')">管理</button>
             ` : ''}
         </div>
     `;
@@ -541,7 +544,7 @@ function generateDownloadLink() {
             alert('生成下载链接失败: ' + data.error);
         }
     })
-    .catch(error => {
+    .catch(error) {
         console.error('Error:', error);
         alert('生成下载链接请求失败');
     });
@@ -620,6 +623,18 @@ function deleteUser() {
 // 页面加载时初始化
 document.addEventListener('DOMContentLoaded', function() {
     loadPendingUsers();
+    
+    // 自动填充OpenVPN用户名字段
+    const usernameInput = document.getElementById('create-username');
+    const ovpnUsernameInput = document.getElementById('create-ovpn-username');
+    
+    if (usernameInput && ovpnUsernameInput) {
+        usernameInput.addEventListener('input', function() {
+            if (!ovpnUsernameInput.value) {
+                ovpnUsernameInput.value = this.value.toLowerCase().replace(/[^a-z0-9]/g, '_');
+            }
+        });
+    }
 });
 </script>
 
@@ -637,12 +652,74 @@ document.addEventListener('DOMContentLoaded', function() {
     margin-bottom: 30px;
 }
 
+.page-header h1 {
+    margin: 0;
+    color: #333;
+}
+
 .btn-back {
-    padding: 8px 16px;
+    padding: 10px 20px;
     background: #6c757d;
     color: white;
     text-decoration: none;
     border-radius: 4px;
+    border: none;
+    cursor: pointer;
+}
+
+.btn-back:hover {
+    background: #545b62;
+}
+
+.card {
+    background: white;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    margin-bottom: 30px;
+}
+
+.card-header {
+    padding: 20px 20px 0;
+    border-bottom: 1px solid #eee;
+}
+
+.card-header h2 {
+    margin: 0;
+    color: #333;
+}
+
+.card-body {
+    padding: 20px;
+}
+
+.form-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+    margin-bottom: 15px;
+}
+
+.form-group {
+    display: flex;
+    flex-direction: column;
+}
+
+.form-group label {
+    margin-bottom: 5px;
+    font-weight: bold;
+    color: #333;
+}
+
+.form-group input {
+    padding: 10px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 14px;
+}
+
+.form-group input:focus {
+    outline: none;
+    border-color: #007bff;
 }
 
 .tabs {
@@ -657,6 +734,7 @@ document.addEventListener('DOMContentLoaded', function() {
     border: none;
     border-bottom: 2px solid transparent;
     cursor: pointer;
+    font-size: 14px;
 }
 
 .tab-btn.active {
@@ -670,6 +748,11 @@ document.addEventListener('DOMContentLoaded', function() {
 
 .tab-content.active {
     display: block;
+}
+
+.tab-content h2 {
+    margin-bottom: 15px;
+    color: #333;
 }
 
 .users-list {
@@ -743,6 +826,97 @@ document.addEventListener('DOMContentLoaded', function() {
     gap: 8px;
 }
 
+/* 按钮样式 */
+.btn-primary {
+    background: #007bff;
+    color: white;
+    padding: 10px 20px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+}
+
+.btn-primary:hover {
+    background: #0056b3;
+}
+
+.btn-primary:disabled {
+    background: #6c757d;
+    cursor: not-allowed;
+}
+
+.btn-secondary {
+    background: #6c757d;
+    color: white;
+    padding: 10px 20px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+}
+
+.btn-secondary:hover {
+    background: #545b62;
+}
+
+.btn-success {
+    background: #28a745;
+    color: white;
+    padding: 6px 12px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+}
+
+.btn-success:hover {
+    background: #218838;
+}
+
+.btn-danger {
+    background: #dc3545;
+    color: white;
+    padding: 6px 12px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+}
+
+.btn-danger:hover {
+    background: #c82333;
+}
+
+.btn-info {
+    background: #17a2b8;
+    color: white;
+    padding: 6px 12px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+}
+
+.btn-info:hover {
+    background: #138496;
+}
+
+.btn-warning {
+    background: #ffc107;
+    color: #212529;
+    padding: 6px 12px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+}
+
+.btn-warning:hover {
+    background: #e0a800;
+}
+
+/* 模态框样式 */
 .modal {
     position: fixed;
     z-index: 1000;
@@ -769,10 +943,15 @@ document.addEventListener('DOMContentLoaded', function() {
     top: 15px;
     font-size: 24px;
     cursor: pointer;
+    color: #aaa;
 }
 
-.form-group {
-    margin-bottom: 15px;
+.close:hover {
+    color: #000;
+}
+
+.modal-body {
+    margin-top: 15px;
 }
 
 .form-control-static {
@@ -787,6 +966,53 @@ document.addEventListener('DOMContentLoaded', function() {
     flex-wrap: wrap;
 }
 
+.form-actions {
+    display: flex;
+    gap: 10px;
+    justify-content: flex-end;
+    margin-top: 20px;
+}
+
+.download-link {
+    display: block;
+    padding: 10px;
+    background: #f8f9fa;
+    border: 1px solid #dee2e6;
+    border-radius: 4px;
+    color: #007bff;
+    text-decoration: none;
+    word-break: break-all;
+}
+
+.download-link:hover {
+    background: #e9ecef;
+}
+
+/* 消息样式 */
+.message {
+    padding: 10px;
+    border-radius: 4px;
+    margin-top: 10px;
+}
+
+.message-success {
+    background: #d4edda;
+    color: #155724;
+    border: 1px solid #c3e6cb;
+}
+
+.message-error {
+    background: #f8d7da;
+    color: #721c24;
+    border: 1px solid #f5c6cb;
+}
+
+.message-warning {
+    background: #fff3cd;
+    color: #856404;
+    border: 1px solid #ffeaa7;
+}
+
 .no-users, .error {
     text-align: center;
     padding: 40px;
@@ -796,6 +1022,31 @@ document.addEventListener('DOMContentLoaded', function() {
 
 .error {
     color: #dc3545;
+}
+
+@media (max-width: 768px) {
+    .form-row {
+        grid-template-columns: 1fr;
+    }
+    
+    .user-card {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 10px;
+    }
+    
+    .user-actions {
+        width: 100%;
+        justify-content: flex-start;
+    }
+    
+    .action-buttons {
+        flex-direction: column;
+    }
+    
+    .form-actions {
+        flex-direction: column;
+    }
 }
 </style>
 {% endblock %}
