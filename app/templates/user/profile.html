@@ -3,13 +3,360 @@
 {% block title %}用户资料 - OpenVPN WebUI{% endblock %}
 
 {% block content %}
-<div class="container mt-5">
-    <h2>用户资料</h2>
-    <div class="card">
-        <div class="card-body">
-            <p>这里是普通用户的个人资料页面。</p>
-            <p>用户登录后，可以在这里查看和管理自己的信息。</p>
+<div class="container mt-4">
+    <div class="row">
+        <div class="col-12">
+            <h2>用户资料</h2>
+            
+            <!-- 消息显示区域 -->
+            <div id="message" class="alert" style="display: none;"></div>
+            
+            <div class="row">
+                <!-- 基本信息卡片 -->
+                <div class="col-md-6">
+                    <div class="card">
+                        <div class="card-header">
+                            <h5 class="card-title mb-0">基本信息</h5>
+                        </div>
+                        <div class="card-body">
+                            <div class="user-info">
+                                <div class="info-item">
+                                    <label>用户名:</label>
+                                    <span id="user-username">{{ user.username if user else '' }}</span>
+                                </div>
+                                <div class="info-item">
+                                    <label>邮箱:</label>
+                                    <span id="user-email">{{ user.email if user else '' }}</span>
+                                </div>
+                                <div class="info-item">
+                                    <label>注册时间:</label>
+                                    <span id="user-created">{{ user.created_at.strftime('%Y-%m-%d %H:%M') if user and user.created_at else '' }}</span>
+                                </div>
+                                <div class="info-item">
+                                    <label>账户状态:</label>
+                                    <span id="user-status" class="status-badge status-{{ user.status if user else 'pending' }}">
+                                        {% if user %}
+                                            {% if user.status == 'pending' %}待审核
+                                            {% elif user.status == 'approved' %}已开通
+                                            {% elif user.status == 'rejected' %}已拒绝
+                                            {% else %}{{ user.status }}{% endif %}
+                                        {% else %}未知{% endif %}
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- OpenVPN信息卡片 -->
+                <div class="col-md-6">
+                    <div class="card">
+                        <div class="card-header">
+                            <h5 class="card-title mb-0">OpenVPN 信息</h5>
+                        </div>
+                        <div class="card-body">
+                            {% if user and user.status == 'approved' %}
+                            <div class="ovpn-info">
+                                <div class="info-item">
+                                    <label>OpenVPN用户名:</label>
+                                    <span id="ovpn-username">{{ user.ovpn_username if user.ovpn_username else '未设置' }}</span>
+                                </div>
+                                <div class="info-item">
+                                    <label>最大设备数:</label>
+                                    <span id="max-devices">{{ user.max_devices if user.max_devices else 2 }}</span>
+                                </div>
+                                <div class="info-item">
+                                    <label>开通时间:</label>
+                                    <span id="approved-at">
+                                        {% if user.approved_at %}
+                                            {{ user.approved_at.strftime('%Y-%m-%d %H:%M') }}
+                                        {% else %}
+                                            未开通
+                                        {% endif %}
+                                    </span>
+                                </div>
+                                
+                                <div class="action-buttons mt-3">
+                                    <button class="btn btn-info btn-sm" onclick="generateConfig()">生成配置文件</button>
+                                    <button class="btn btn-warning btn-sm" onclick="showChangePasswordModal()">修改OpenVPN密码</button>
+                                </div>
+                            </div>
+                            {% else %}
+                            <div class="alert alert-info">
+                                <i class="fas fa-info-circle"></i>
+                                您的账户正在等待管理员审核，审核通过后即可使用OpenVPN服务。
+                            </div>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 连接状态卡片 -->
+            {% if user and user.status == 'approved' %}
+            <div class="card mt-4">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">连接状态</h5>
+                </div>
+                <div class="card-body">
+                    <div id="connection-status">
+                        <p>正在获取连接状态...</p>
+                    </div>
+                </div>
+            </div>
+            {% endif %}
         </div>
     </div>
 </div>
+
+<!-- 修改OpenVPN密码模态框 -->
+<div id="change-password-modal" class="modal" style="display: none;">
+    <div class="modal-content">
+        <span class="close" onclick="closeChangePasswordModal()">&times;</span>
+        <h2>修改 OpenVPN 密码</h2>
+        <form id="change-password-form">
+            <div class="form-group">
+                <label for="new-ovpn-password">新密码 *</label>
+                <input type="password" class="form-control" id="new-ovpn-password" required>
+                <small class="form-text text-muted">新的OpenVPN连接密码，至少6位</small>
+            </div>
+            <div class="form-group">
+                <label for="confirm-ovpn-password">确认新密码 *</label>
+                <input type="password" class="form-control" id="confirm-ovpn-password" required>
+            </div>
+            <div class="form-actions">
+                <button type="button" class="btn btn-secondary" onclick="closeChangePasswordModal()">取消</button>
+                <button type="submit" class="btn btn-primary">修改密码</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- 下载链接模态框 -->
+<div id="download-modal" class="modal" style="display: none;">
+    <div class="modal-content">
+        <span class="close" onclick="closeDownloadModal()">&times;</span>
+        <h2>配置文件下载</h2>
+        <div class="modal-body">
+            <p>您的OpenVPN配置文件已生成，链接将在5分钟后失效：</p>
+            <div class="form-group">
+                <label>下载链接:</label>
+                <a id="download-link" href="#" target="_blank" class="form-control">点击下载配置文件</a>
+            </div>
+            <div class="form-group">
+                <label>过期时间:</label>
+                <span id="expires-at" class="form-control-static"></span>
+            </div>
+            <div class="alert alert-warning">
+                <small>
+                    <i class="fas fa-exclamation-triangle"></i>
+                    请注意：此链接只能下载一次，请妥善保管配置文件。
+                </small>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// 显示修改密码模态框
+function showChangePasswordModal() {
+    document.getElementById('change-password-modal').style.display = 'block';
+}
+
+// 关闭修改密码模态框
+function closeChangePasswordModal() {
+    document.getElementById('change-password-modal').style.display = 'none';
+    document.getElementById('change-password-form').reset();
+}
+
+// 关闭下载模态框
+function closeDownloadModal() {
+    document.getElementById('download-modal').style.display = 'none';
+}
+
+// 修改OpenVPN密码
+document.getElementById('change-password-form').addEventListener('submit', function(e) {
+    e.preventDefault();
+    
+    const newPassword = document.getElementById('new-ovpn-password').value;
+    const confirmPassword = document.getElementById('confirm-ovpn-password').value;
+    
+    if (!newPassword || !confirmPassword) {
+        showMessage('请填写新密码和确认密码', 'danger');
+        return;
+    }
+    
+    if (newPassword !== confirmPassword) {
+        showMessage('两次输入的密码不一致', 'danger');
+        return;
+    }
+    
+    if (newPassword.length < 6) {
+        showMessage('密码长度至少6位', 'danger');
+        return;
+    }
+    
+    fetch('/user/change_ovpn_password', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            new_password: newPassword,
+            confirm_password: confirmPassword
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showMessage(data.message || 'OpenVPN密码修改成功', 'success');
+            closeChangePasswordModal();
+        } else {
+            showMessage('修改失败: ' + data.error, 'danger');
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        showMessage('修改请求失败，请稍后重试', 'danger');
+    });
+});
+
+// 生成配置文件
+function generateConfig() {
+    const username = document.getElementById('user-username').textContent;
+    
+    fetch(`/api/users/${username}/generate_download`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            // 显示下载链接模态框
+            document.getElementById('download-link').href = data.download_url;
+            document.getElementById('download-link').textContent = data.download_url;
+            document.getElementById('expires-at').textContent = new Date(data.expires_at).toLocaleString();
+            document.getElementById('download-modal').style.display = 'block';
+        } else {
+            showMessage('生成配置文件失败: ' + data.error, 'danger');
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        showMessage('生成配置文件请求失败', 'danger');
+    });
+}
+
+// 显示消息
+function showMessage(message, type) {
+    const messageDiv = document.getElementById('message');
+    messageDiv.textContent = message;
+    messageDiv.className = `alert alert-${type}`;
+    messageDiv.style.display = 'block';
+    
+    // 3秒后自动隐藏成功消息
+    if (type === 'success') {
+        setTimeout(() => {
+            messageDiv.style.display = 'none';
+        }, 3000);
+    }
+}
+
+// 页面加载时检查用户状态
+document.addEventListener('DOMContentLoaded', function() {
+    // 如果用户未登录，跳转到登录页面
+    {% if not user %}
+    window.location.href = '/user/login';
+    {% endif %}
+});
+</script>
+
+<style>
+.user-info .info-item, .ovpn-info .info-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 0;
+    border-bottom: 1px solid #eee;
+}
+
+.user-info .info-item:last-child, .ovpn-info .info-item:last-child {
+    border-bottom: none;
+}
+
+.user-info .info-item label, .ovpn-info .info-item label {
+    font-weight: bold;
+    color: #555;
+    margin: 0;
+}
+
+.status-badge {
+    padding: 4px 12px;
+    border-radius: 12px;
+    font-size: 0.8em;
+    font-weight: bold;
+}
+
+.status-pending {
+    background: #fff3cd;
+    color: #856404;
+}
+
+.status-approved {
+    background: #d1ecf1;
+    color: #0c5460;
+}
+
+.status-rejected {
+    background: #f8d7da;
+    color: #721c24;
+}
+
+.action-buttons {
+    display: flex;
+    gap: 10px;
+}
+
+.modal {
+    position: fixed;
+    z-index: 1000;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0,0,0,0.5);
+}
+
+.modal-content {
+    background-color: white;
+    margin: 5% auto;
+    padding: 20px;
+    border-radius: 8px;
+    width: 90%;
+    max-width: 500px;
+    position: relative;
+}
+
+.close {
+    position: absolute;
+    right: 15px;
+    top: 15px;
+    font-size: 24px;
+    cursor: pointer;
+}
+
+.form-group {
+    margin-bottom: 15px;
+}
+
+.form-control-static {
+    display: block;
+    padding: 6px 0;
+    font-weight: bold;
+}
+</style>
 {% endblock %}

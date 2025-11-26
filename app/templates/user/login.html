@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+
+{% block title %}用户登录 - OpenVPN WebUI{% endblock %}
+
+{% block content %}
+<div class="container mt-5">
+    <div class="row justify-content-center">
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header">
+                    <h4 class="mb-0">用户登录</h4>
+                </div>
+                <div class="card-body">
+                    <!-- 消息显示区域 -->
+                    <div id="message" class="alert" style="display: none;"></div>
+                    
+                    <form id="loginForm">
+                        <div class="mb-3">
+                            <label for="username" class="form-label">用户名</label>
+                            <input type="text" class="form-control" id="username" name="username" required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="password" class="form-label">密码</label>
+                            <input type="password" class="form-control" id="password" name="password" required>
+                        </div>
+                        <button type="submit" class="btn btn-primary w-100" id="submitBtn">登录</button>
+                    </form>
+                    <div class="mt-3 text-center">
+                        <p>还没有账户？ <a href="/register">立即注册</a></p>
+                        <p>管理员请点击 <a href="/admin/login">这里登录</a></p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.getElementById('loginForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+    
+    const submitBtn = document.getElementById('submitBtn');
+    const messageDiv = document.getElementById('message');
+    
+    const formData = {
+        username: document.getElementById('username').value,
+        password: document.getElementById('password').value
+    };
+    
+    if (!formData.username || !formData.password) {
+        showMessage('请输入用户名和密码', 'danger');
+        return;
+    }
+    
+    submitBtn.disabled = true;
+    submitBtn.textContent = '登录中...';
+    
+    fetch('/user/login', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(formData)
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showMessage('登录成功！正在跳转...', 'success');
+            setTimeout(() => {
+                window.location.href = '/user/profile';
+            }, 1000);
+        } else {
+            showMessage('登录失败: ' + data.error, 'danger');
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        showMessage('登录请求失败，请稍后重试', 'danger');
+    })
+    .finally(() => {
+        submitBtn.disabled = false;
+        submitBtn.textContent = '登录';
+    });
+});
+
+function showMessage(message, type) {
+    const messageDiv = document.getElementById('message');
+    messageDiv.textContent = message;
+    messageDiv.className = `alert alert-${type}`;
+    messageDiv.style.display = 'block';
+}
+</script>
+{% endblock %}

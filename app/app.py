@@ -7,6 +7,7 @@ import subprocess
 from datetime import datetime, timedelta
 import sqlite3
 import logging
+from werkzeug.security import generate_password_hash, check_password_hash
 
 app = Flask(__name__)
 app.secret_key = secrets.token_hex(32)
@@ -40,7 +41,7 @@ logging.basicConfig(
 db = SQLAlchemy(app)
 login_manager = LoginManager()
 login_manager.init_app(app)
-login_manager.login_view = 'admin_login'
+login_manager.login_view = 'user_login'
 
 # 数据库模型
 class AdminUser(UserMixin, db.Model):
@@ -50,13 +51,15 @@ class AdminUser(UserMixin, db.Model):
     email = db.Column(db.String(100))
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
-class NormalUser(db.Model):
+class NormalUser(UserMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(50), unique=True, nullable=False)
     email = db.Column(db.String(100), unique=True, nullable=False)
+    password_hash = db.Column(db.String(255), nullable=False)  # WebUI密码
     email_verified = db.Column(db.Boolean, default=False)
     status = db.Column(db.String(20), default='pending')  # pending, approved, rejected
     ovpn_username = db.Column(db.String(50))
+    ovpn_password = db.Column(db.String(255))  # OpenVPN密码
     max_devices = db.Column(db.Integer, default=2)
     ip_type = db.Column(db.String(10), default='dhcp')
     static_ip = db.Column(db.String(15))
@@ -79,7 +82,11 @@ class TempDownloadLink(db.Model):
 
 @login_manager.user_loader
 def load_user(user_id):
-    return AdminUser.query.get(int(user_id))
+    # 同时支持管理员和普通用户登录
+    user = AdminUser.query.get(int(user_id))
+    if user:
+        return user
+    return NormalUser.query.get(int(user_id))
 
 def init_db():
     """初始化数据库"""
@@ -112,12 +119,12 @@ def create_ovpn_user(username, password, max_devices=2):
     except Exception as e:
         return False, '', str(e)
 
-def change_ovpn_password(username, current_password, new_password):
+def change_ovpn_password(username, new_password):
     """修改OpenVPN密码"""
     try:
         script_path = f'{INSTALL_DIR}/scripts/change_ovpn_password.sh'
         result = subprocess.run([
-            script_path, username, current_password, new_password
+            script_path, username, new_password
         ], capture_output=True, text=True, timeout=30)
         
         return result.returncode == 0, result.stdout, result.stderr
@@ -128,8 +135,8 @@ def change_ovpn_password(username, current_password, new_password):
 
 @app.route('/')
 def index():
-    """根路径 - 跳转到用户注册页面"""
-    return redirect(url_for('user_register'))
+    """根路径 - 跳转到用户登录页面"""
+    return redirect(url_for('user_login'))
 
 @app.route('/admin/login', methods=['GET', 'POST'])
 def admin_login():
@@ -138,7 +145,7 @@ def admin_login():
         username = request.json.get('username')
         password = request.json.get('password')
         
-        # 验证管理员账户 - 使用明文密码比较
+        # 验证管理员账户
         user = AdminUser.query.filter_by(username=username).first()
         if user and user.password_hash == password:  # 直接比较明文密码
             login_user(user)
@@ -152,18 +159,24 @@ def admin_login():
 @login_required
 def admin_dashboard():
     """管理员仪表板"""
+    if not isinstance(current_user, AdminUser):
+        return redirect(url_for('user_login'))
     return render_template('admin/dashboard.html')
 
 @app.route('/admin/users')
 @login_required
 def admin_users():
     """用户管理页面"""
+    if not isinstance(current_user, AdminUser):
+        return redirect(url_for('user_login'))
     return render_template('admin/users.html')
 
 @app.route('/admin/openvpn')
 @login_required
 def admin_openvpn():
     """OpenVPN配置页面"""
+    if not isinstance(current_user, AdminUser):
+        return redirect(url_for('user_login'))
     return render_template('admin/openvpn.html')
 
 @app.route('/admin/logout')
@@ -177,6 +190,8 @@ def admin_logout():
 @login_required
 def admin_index():
     """管理员首页"""
+    if not isinstance(current_user, AdminUser):
+        return redirect(url_for('user_login'))
     return redirect(url_for('admin_dashboard'))
 
 # ==================== 用户路由 ====================
@@ -189,6 +204,27 @@ def user_register():
             data = request.json
             username = data.get('username')
             email = data.get('email')
+            password = data.get('password')
+            password_confirm = data.get('password_confirm')
+            
+            # 验证输入
+            if not all([username, email, password, password_confirm]):
+                return jsonify({
+                    'success': False,
+                    'error': '请填写所有必填字段'
+                })
+            
+            if password != password_confirm:
+                return jsonify({
+                    'success': False,
+                    'error': '两次输入的密码不一致'
+                })
+            
+            if len(password) < 6:
+                return jsonify({
+                    'success': False,
+                    'error': '密码长度至少6位'
+                })
             
             # 检查用户是否已存在
             existing_user = NormalUser.query.filter(
@@ -205,28 +241,106 @@ def user_register():
             new_user = NormalUser(
                 username=username,
                 email=email,
+                password_hash=generate_password_hash(password),  # 加密存储WebUI密码
                 status='pending'
             )
             db.session.add(new_user)
             db.session.commit()
             
             app.logger.info(f"新用户注册: {username} ({email})")
-            return jsonify({'success': True})
+            return jsonify({'success': True, 'message': '注册成功！请等待管理员审核。'})
             
         except Exception as e:
+            app.logger.error(f"注册失败: {str(e)}")
             return jsonify({'success': False, 'error': str(e)})
     
     return render_template('user/register.html')
 
+@app.route('/user/login', methods=['GET', 'POST'])
+def user_login():
+    """用户登录"""
+    if request.method == 'POST':
+        username = request.json.get('username')
+        password = request.json.get('password')
+        
+        # 验证普通用户账户
+        user = NormalUser.query.filter_by(username=username).first()
+        if user and check_password_hash(user.password_hash, password):
+            if user.status == 'approved':
+                login_user(user)
+                return jsonify({'success': True})
+            else:
+                return jsonify({'success': False, 'error': '账户尚未审核通过'})
+        
+        return jsonify({'success': False, 'error': '用户名或密码错误'})
+    
+    return render_template('user/login.html')
+
 @app.route('/user/profile')
+@login_required
 def user_profile():
     """用户个人资料页面"""
-    return render_template('user/profile.html')
+    if not isinstance(current_user, NormalUser):
+        return redirect(url_for('user_login'))
+    
+    # 获取当前用户的详细信息
+    user = NormalUser.query.get(current_user.id)
+    return render_template('user/profile.html', user=user)
+
+@app.route('/user/logout')
+@login_required
+def user_logout():
+    """用户登出"""
+    logout_user()
+    return redirect(url_for('user_login'))
 
 @app.route('/user')
 def user_index():
     """用户首页"""
     return redirect(url_for('user_profile'))
+
+@app.route('/user/change_ovpn_password', methods=['POST'])
+@login_required
+def change_user_ovpn_password():
+    """用户修改OpenVPN密码"""
+    if not isinstance(current_user, NormalUser):
+        return jsonify({'success': False, 'error': '无权限'})
+    
+    try:
+        data = request.json
+        new_password = data.get('new_password')
+        confirm_password = data.get('confirm_password')
+        
+        if not new_password or not confirm_password:
+            return jsonify({'success': False, 'error': '请填写密码'})
+        
+        if new_password != confirm_password:
+            return jsonify({'success': False, 'error': '两次输入的密码不一致'})
+        
+        if len(new_password) < 6:
+            return jsonify({'success': False, 'error': '密码长度至少6位'})
+        
+        user = NormalUser.query.get(current_user.id)
+        if not user.ovpn_username:
+            return jsonify({'success': False, 'error': '用户尚未开通OpenVPN访问'})
+        
+        # 修改OpenVPN密码
+        success, stdout, stderr = change_ovpn_password(user.ovpn_username, new_password)
+        
+        if success:
+            # 更新数据库中的OpenVPN密码（可选，根据安全需求决定是否存储）
+            user.ovpn_password = generate_password_hash(new_password)
+            db.session.commit()
+            
+            app.logger.info(f"用户 {user.username} 修改OpenVPN密码成功")
+            return jsonify({'success': True, 'message': '密码修改成功'})
+        else:
+            app.logger.error(f"修改OpenVPN密码失败: {stderr}")
+            return jsonify({'success': False, 'error': f'密码修改失败: {stderr}'})
+            
+    except Exception as e:
+        app.logger.error(f"修改OpenVPN密码异常: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)})
 
 # ==================== API 路由 ====================
 
@@ -234,6 +348,9 @@ def user_index():
 @login_required
 def admin_stats():
     """获取管理员统计信息"""
+    if not isinstance(current_user, AdminUser):
+        return jsonify({'error': '无权限'}), 403
+    
     total_users = NormalUser.query.count()
     pending_users = NormalUser.query.filter_by(status='pending').count()
     approved_users = NormalUser.query.filter_by(status='approved').count()
@@ -248,6 +365,9 @@ def admin_stats():
 @login_required
 def get_pending_users():
     """获取待审核用户列表"""
+    if not isinstance(current_user, AdminUser):
+        return jsonify({'error': '无权限'}), 403
+    
     users = NormalUser.query.filter_by(status='pending').all()
     return jsonify([{
         'id': u.id,
@@ -260,6 +380,9 @@ def get_pending_users():
 @login_required
 def get_users_list():
     """获取所有用户列表"""
+    if not isinstance(current_user, AdminUser):
+        return jsonify({'error': '无权限'}), 403
+    
     try:
         users = NormalUser.query.all()
         user_list = []
@@ -287,31 +410,107 @@ def get_users_list():
             'error': str(e)
         })
 
+@app.route('/api/users/create', methods=['POST'])
+@login_required
+def create_user_manual():
+    """管理员手动创建用户"""
+    if not isinstance(current_user, AdminUser):
+        return jsonify({'error': '无权限'}), 403
+    
+    try:
+        data = request.json
+        username = data.get('username')
+        email = data.get('email')
+        password = data.get('password')  # WebUI密码
+        max_devices = data.get('max_devices', 2)
+        
+        # 验证必填字段
+        if not all([username, email, password]):
+            return jsonify({
+                'success': False,
+                'error': '请填写所有必填字段'
+            })
+        
+        # 检查用户是否已存在
+        existing_user = NormalUser.query.filter(
+            (NormalUser.username == username) | 
+            (NormalUser.email == email)
+        ).first()
+        
+        if existing_user:
+            return jsonify({
+                'success': False,
+                'error': '用户名或邮箱已存在'
+            })
+        
+        # OpenVPN用户名就是Web用户名
+        ovpn_username = username
+        ovpn_password = secrets.token_urlsafe(8)  # 生成随机OpenVPN密码
+        
+        # 创建OpenVPN用户
+        success, stdout, stderr = create_ovpn_user(ovpn_username, ovpn_password, max_devices)
+        
+        if success:
+            # 创建数据库记录
+            new_user = NormalUser(
+                username=username,
+                email=email,
+                password_hash=generate_password_hash(password),  # WebUI密码
+                ovpn_username=ovpn_username,
+                ovpn_password=generate_password_hash(ovpn_password),  # OpenVPN密码
+                max_devices=max_devices,
+                status='approved',
+                password_set=True,
+                approved_by=current_user.id,
+                approved_at=datetime.utcnow()
+            )
+            db.session.add(new_user)
+            db.session.commit()
+            
+            app.logger.info(f"管理员手动创建用户: {username} (OpenVPN用户: {ovpn_username})")
+            return jsonify({
+                'success': True, 
+                'message': '用户创建成功',
+                'ovpn_password': ovpn_password  # 返回OpenVPN密码供管理员查看
+            })
+        else:
+            return jsonify({'success': False, 'error': f'创建OpenVPN用户失败: {stderr}'})
+            
+    except Exception as e:
+        app.logger.error(f"手动创建用户失败: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)})
+
 @app.route('/api/users/<int:user_id>/approve', methods=['POST'])
 @login_required
 def approve_user(user_id):
     """批准用户申请"""
+    if not isinstance(current_user, AdminUser):
+        return jsonify({'error': '无权限'}), 403
+    
     user = NormalUser.query.get_or_404(user_id)
-    data = request.json
+    
+    # OpenVPN用户名就是Web用户名
+    ovpn_username = user.username
+    ovpn_password = secrets.token_urlsafe(8)  # 生成随机OpenVPN密码
     
     # 创建OpenVPN用户
-    success, stdout, stderr = create_ovpn_user(
-        data['ovpn_username'],
-        data['password'],
-        data.get('max_devices', 2)
-    )
+    success, stdout, stderr = create_ovpn_user(ovpn_username, ovpn_password, 2)
     
     if success:
         user.status = 'approved'
-        user.ovpn_username = data['ovpn_username']
-        user.max_devices = data.get('max_devices', 2)
+        user.ovpn_username = ovpn_username
+        user.ovpn_password = generate_password_hash(ovpn_password)
+        user.max_devices = 2
         user.approved_by = current_user.id
         user.approved_at = datetime.utcnow()
         user.password_set = True
         db.session.commit()
         
-        app.logger.info(f"用户 {user.username} 审核通过")
-        return jsonify({'success': True})
+        app.logger.info(f"用户 {user.username} 审核通过，OpenVPN密码: {ovpn_password}")
+        return jsonify({
+            'success': True,
+            'ovpn_password': ovpn_password  # 返回OpenVPN密码供管理员查看
+        })
     else:
         app.logger.error(f"用户审核失败: {stderr}")
         return jsonify({'success': False, 'error': stderr})
@@ -320,6 +519,9 @@ def approve_user(user_id):
 @login_required
 def reject_user(user_id):
     """拒绝用户申请"""
+    if not isinstance(current_user, AdminUser):
+        return jsonify({'error': '无权限'}), 403
+    
     try:
         user = NormalUser.query.get_or_404(user_id)
         user.status = 'rejected'
@@ -334,6 +536,9 @@ def reject_user(user_id):
 @login_required
 def delete_user(user_id):
     """删除用户"""
+    if not isinstance(current_user, AdminUser):
+        return jsonify({'error': '无权限'}), 403
+    
     try:
         user = NormalUser.query.get_or_404(user_id)
         
@@ -372,6 +577,9 @@ def delete_user(user_id):
 @login_required
 def generate_download_link(username):
     """生成配置文件下载链接"""
+    if not isinstance(current_user, AdminUser):
+        return jsonify({'error': '无权限'}), 403
+    
     user = NormalUser.query.filter_by(username=username, status='approved').first_or_404()
     
     token = secrets.token_urlsafe(16)
@@ -412,6 +620,9 @@ def generate_download_link(username):
 @login_required
 def openvpn_status():
     """获取OpenVPN状态"""
+    if not isinstance(current_user, AdminUser):
+        return jsonify({'error': '无权限'}), 403
+    
     try:
         # 检查OpenVPN服务状态
         result = subprocess.run(
@@ -456,6 +667,9 @@ def openvpn_status():
 @login_required
 def restart_openvpn():
     """重启OpenVPN服务"""
+    if not isinstance(current_user, AdminUser):
+        return jsonify({'error': '无权限'}), 403
+    
     try:
         # 尝试不同的服务名称
         services = ['openvpn', 'openvpn-server@server']
@@ -515,61 +729,3 @@ if __name__ == '__main__':
     init_db()
     app.logger.info("启动 OpenVPN WebUI 服务...")
     app.run(host='0.0.0.0', port=5000, debug=False)
-@app.route('/api/users/create', methods=['POST'])
-@login_required
-def create_user_manual():
-    """管理员手动创建用户"""
-    try:
-        data = request.json
-        username = data.get('username')
-        email = data.get('email')
-        ovpn_username = data.get('ovpn_username')
-        password = data.get('password')
-        max_devices = data.get('max_devices', 2)
-        
-        # 验证必填字段
-        if not all([username, email, ovpn_username, password]):
-            return jsonify({
-                'success': False,
-                'error': '请填写所有必填字段'
-            })
-        
-        # 检查用户是否已存在
-        existing_user = NormalUser.query.filter(
-            (NormalUser.username == username) | 
-            (NormalUser.email == email) |
-            (NormalUser.ovpn_username == ovpn_username)
-        ).first()
-        
-        if existing_user:
-            return jsonify({
-                'success': False,
-                'error': '用户名、邮箱或OpenVPN用户名已存在'
-            })
-        
-        # 创建OpenVPN用户
-        success, stdout, stderr = create_ovpn_user(ovpn_username, password, max_devices)
-        
-        if success:
-            # 创建数据库记录
-            new_user = NormalUser(
-                username=username,
-                email=email,
-                ovpn_username=ovpn_username,
-                max_devices=max_devices,
-                status='approved',
-                password_set=True,
-                approved_by=current_user.id,
-                approved_at=datetime.utcnow()
-            )
-            db.session.add(new_user)
-            db.session.commit()
-            
-            app.logger.info(f"管理员手动创建用户: {username} (OpenVPN用户: {ovpn_username})")
-            return jsonify({'success': True, 'message': '用户创建成功'})
-        else:
-            return jsonify({'success': False, 'error': f'创建OpenVPN用户失败: {stderr}'})
-            
-    except Exception as e:
-        app.logger.error(f"手动创建用户失败: {e}")
-        return jsonify({'success': False, 'error': str(e)})
