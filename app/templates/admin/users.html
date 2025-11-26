@@ -122,6 +122,13 @@
                 <label>状态:</label>
                 <span id="action-status" class="form-control-static"></span>
             </div>
+            <div class="form-group">
+                <label for="action-max-devices">最大设备数:</label>
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <input type="number" id="action-max-devices" min="1" max="10" style="width: 80px;">
+                    <button type="button" class="btn-primary" onclick="updateMaxDevices()" style="padding: 6px 12px; font-size: 12px;">更新</button>
+                </div>
+            </div>
             <div class="action-buttons">
                 <button type="button" class="btn-info" onclick="generateDownloadLink()">生成下载链接</button>
                 <button type="button" class="btn-warning" onclick="showResetPasswordForm()">重置密码</button>
@@ -482,6 +489,63 @@ function openUserActions(userId, username, status) {
     document.getElementById('action-username').textContent = username;
     document.getElementById('action-status').textContent = getStatusText(status);
     document.getElementById('user-actions-modal').style.display = 'block';
+    
+    // 加载用户当前的最大设备数
+    loadUserMaxDevices(userId);
+}
+
+// 加载用户最大设备数
+function loadUserMaxDevices(userId) {
+    fetch(`/api/users/${userId}/details`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                document.getElementById('action-max-devices').value = data.user.max_devices || 2;
+            } else {
+                document.getElementById('action-max-devices').value = 2;
+            }
+        })
+        .catch(error => {
+            console.error('Error loading user details:', error);
+            document.getElementById('action-max-devices').value = 2;
+        });
+}
+
+// 更新最大设备数
+function updateMaxDevices() {
+    const userId = document.getElementById('action-user-id').value;
+    const maxDevices = parseInt(document.getElementById('action-max-devices').value);
+    const username = document.getElementById('action-username').textContent;
+    
+    if (!maxDevices || maxDevices < 1 || maxDevices > 10) {
+        alert('请输入1-10之间的有效设备数');
+        return;
+    }
+    
+    fetch(`/api/users/${userId}/update_max_devices`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            max_devices: maxDevices
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert('最大设备数更新成功');
+            // 刷新用户列表以显示更新后的信息
+            loadApprovedUsers();
+            loadAllUsers();
+        } else {
+            alert('更新失败: ' + data.error);
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('更新请求失败');
+    });
 }
 
 // 关闭用户操作模态框
