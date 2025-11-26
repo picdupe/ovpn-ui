@@ -302,7 +302,7 @@ def user_index():
 @app.route('/user/change_ovpn_password', methods=['POST'])
 @login_required
 def change_user_ovpn_password():
-    """用户修改OpenVPN密码"""
+    """用户创建/修改OpenVPN密码"""
     if not isinstance(current_user, NormalUser):
         return jsonify({'success': False, 'error': '无权限'})
     
@@ -322,24 +322,32 @@ def change_user_ovpn_password():
         
         user = NormalUser.query.get(current_user.id)
         if not user.ovpn_username:
-            return jsonify({'success': False, 'error': '用户尚未开通OpenVPN访问'})
+            return jsonify({'success': False, 'error': 'OpenVPN用户名未设置'})
         
-        # 修改OpenVPN密码
-        success, stdout, stderr = change_ovpn_password(user.ovpn_username, new_password)
+        # 创建或修改OpenVPN用户
+        if user.password_set:
+            # 修改现有OpenVPN密码
+            success, stdout, stderr = change_ovpn_password(user.ovpn_username, new_password)
+            action = "修改"
+        else:
+            # 创建新的OpenVPN用户
+            success, stdout, stderr = create_ovpn_user(user.ovpn_username, new_password, user.max_devices)
+            action = "创建"
         
         if success:
-            # 更新数据库中的OpenVPN密码（可选，根据安全需求决定是否存储）
+            # 更新数据库状态
             user.ovpn_password = generate_password_hash(new_password)
+            user.password_set = True
             db.session.commit()
             
-            app.logger.info(f"用户 {user.username} 修改OpenVPN密码成功")
-            return jsonify({'success': True, 'message': '密码修改成功'})
+            app.logger.info(f"用户 {user.username} {action}OpenVPN密码成功")
+            return jsonify({'success': True, 'message': f'OpenVPN密码{action}成功'})
         else:
-            app.logger.error(f"修改OpenVPN密码失败: {stderr}")
-            return jsonify({'success': False, 'error': f'密码修改失败: {stderr}'})
+            app.logger.error(f"{action}OpenVPN密码失败: {stderr}")
+            return jsonify({'success': False, 'error': f'OpenVPN密码{action}失败: {stderr}'})
             
     except Exception as e:
-        app.logger.error(f"修改OpenVPN密码异常: {str(e)}")
+        app.logger.error(f"OpenVPN密码操作异常: {str(e)}")
         return jsonify({'success': False, 'error': str(e)})
 
 # ==================== API 路由 ====================
@@ -443,38 +451,30 @@ def create_user_manual():
                 'error': '用户名或邮箱已存在'
             })
         
-        # OpenVPN用户名就是Web用户名
+        # OpenVPN用户名就是Web用户名，但不创建OpenVPN用户
         ovpn_username = username
-        ovpn_password = secrets.token_urlsafe(8)  # 生成随机OpenVPN密码
         
-        # 创建OpenVPN用户
-        success, stdout, stderr = create_ovpn_user(ovpn_username, ovpn_password, max_devices)
+        # 创建数据库记录，不创建OpenVPN用户
+        new_user = NormalUser(
+            username=username,
+            email=email,
+            password_hash=generate_password_hash(password),  # WebUI密码
+            ovpn_username=ovpn_username,
+            ovpn_password=None,  # 不存储OpenVPN密码
+            max_devices=max_devices,
+            status='approved',
+            password_set=False,  # 标记为未设置OpenVPN密码
+            approved_by=current_user.id,
+            approved_at=datetime.utcnow()
+        )
+        db.session.add(new_user)
+        db.session.commit()
         
-        if success:
-            # 创建数据库记录
-            new_user = NormalUser(
-                username=username,
-                email=email,
-                password_hash=generate_password_hash(password),  # WebUI密码
-                ovpn_username=ovpn_username,
-                ovpn_password=generate_password_hash(ovpn_password),  # OpenVPN密码
-                max_devices=max_devices,
-                status='approved',
-                password_set=True,
-                approved_by=current_user.id,
-                approved_at=datetime.utcnow()
-            )
-            db.session.add(new_user)
-            db.session.commit()
-            
-            app.logger.info(f"管理员手动创建用户: {username} (OpenVPN用户: {ovpn_username})")
-            return jsonify({
-                'success': True, 
-                'message': '用户创建成功',
-                'ovpn_password': ovpn_password  # 返回OpenVPN密码供管理员查看
-            })
-        else:
-            return jsonify({'success': False, 'error': f'创建OpenVPN用户失败: {stderr}'})
+        app.logger.info(f"管理员手动创建用户: {username} (OpenVPN账户待用户自行创建)")
+        return jsonify({
+            'success': True, 
+            'message': '用户创建成功，请告知用户登录后自行创建OpenVPN账户和设置密码'
+        })
             
     except Exception as e:
         app.logger.error(f"手动创建用户失败: {str(e)}")
@@ -489,31 +489,24 @@ def approve_user(user_id):
     
     user = NormalUser.query.get_or_404(user_id)
     
-    # OpenVPN用户名就是Web用户名
+    # OpenVPN用户名就是Web用户名，但不创建OpenVPN用户
     ovpn_username = user.username
-    ovpn_password = secrets.token_urlsafe(8)  # 生成随机OpenVPN密码
     
-    # 创建OpenVPN用户
-    success, stdout, stderr = create_ovpn_user(ovpn_username, ovpn_password, 2)
+    # 只更新用户状态，不创建OpenVPN用户
+    user.status = 'approved'
+    user.ovpn_username = ovpn_username  # 设置OpenVPN用户名，但账户未创建
+    user.ovpn_password = None  # 不存储OpenVPN密码
+    user.max_devices = 2
+    user.approved_by = current_user.id
+    user.approved_at = datetime.utcnow()
+    user.password_set = False  # 标记为未设置OpenVPN密码
+    db.session.commit()
     
-    if success:
-        user.status = 'approved'
-        user.ovpn_username = ovpn_username
-        user.ovpn_password = generate_password_hash(ovpn_password)
-        user.max_devices = 2
-        user.approved_by = current_user.id
-        user.approved_at = datetime.utcnow()
-        user.password_set = True
-        db.session.commit()
-        
-        app.logger.info(f"用户 {user.username} 审核通过，OpenVPN密码: {ovpn_password}")
-        return jsonify({
-            'success': True,
-            'ovpn_password': ovpn_password  # 返回OpenVPN密码供管理员查看
-        })
-    else:
-        app.logger.error(f"用户审核失败: {stderr}")
-        return jsonify({'success': False, 'error': stderr})
+    app.logger.info(f"用户 {user.username} 审核通过，OpenVPN账户待用户自行创建")
+    return jsonify({
+        'success': True,
+        'message': '用户开通成功，请告知用户登录后自行创建OpenVPN账户和设置密码'
+    })
 
 @app.route('/api/users/<int:user_id>/reject', methods=['POST'])
 @login_required
@@ -543,7 +536,7 @@ def delete_user(user_id):
         user = NormalUser.query.get_or_404(user_id)
         
         # 删除OpenVPN用户（如果已创建）
-        if user.ovpn_username:
+        if user.ovpn_username and user.password_set:
             try:
                 # 从认证文件中删除用户
                 auth_file = "/etc/ovpn-ui/openvpn/auth/users"

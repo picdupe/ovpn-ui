@@ -39,7 +39,7 @@ check_existing_installation() {
     if [ -d "$INSTALL_DIR" ] && [ -f "$INSTALL_DIR/.installed" ]; then
         echo "=== OpenVPN WebUI 安装程序 ==="
         echo ""
-        echo "🔍 检测到系统已安装 OpenVPN WebUI"
+        echo "检测到系统已安装 OpenVPN WebUI"
         read -p "是否重新安装? [y/N]: " reinstall
         if [[ ! $reinstall =~ ^[Yy]$ ]]; then
             echo "安装取消"
@@ -49,14 +49,14 @@ check_existing_installation() {
     else
         echo "=== OpenVPN WebUI 安装程序 ==="
         echo ""
-        echo "🎯 开始安装 OpenVPN WebUI"
+        echo "开始安装 OpenVPN WebUI"
     fi
 }
 
 get_installation_config() {
     echo ""
-    echo "📝 请输入安装配置:"
-    echo "─────────────────────────────────────"
+    echo "请输入安装配置:"
+    echo "-------------------------------------"
     
     read -p "Web访问端口 [5000]: " web_port
     WEB_PORT=${web_port:-5000}
@@ -114,9 +114,9 @@ clone_repository() {
     
     # 克隆代码
     if git clone "$REPO_URL" "$INSTALL_DIR" >> $LOG_FILE 2>&1; then
-        log "✅ 代码下载成功"
+        log "代码下载成功"
     else
-        error "❌ 代码下载失败"
+        error "代码下载失败"
     fi
 }
 
@@ -135,6 +135,21 @@ setup_python_env() {
     fi
     
     log "Python环境配置完成"
+}
+
+setup_scripts_permissions() {
+    log "设置脚本执行权限..."
+    
+    # 确保脚本目录存在
+    mkdir -p $INSTALL_DIR/scripts
+    
+    # 给所有脚本执行权限
+    if [ -d "$INSTALL_DIR/scripts" ]; then
+        chmod +x $INSTALL_DIR/scripts/*.sh >> $LOG_FILE 2>&1
+        log "脚本权限设置完成"
+    else
+        warning "脚本目录不存在，跳过权限设置"
+    fi
 }
 
 create_systemd_service() {
@@ -173,13 +188,16 @@ create_management_command() {
     mkdir -p /usr/local/bin/
     
     # 复制管理脚本到 /usr/local/bin/
-    cp $INSTALL_DIR/scripts/ovpn-ui.sh /usr/local/bin/ovpn-ui
-    chmod +x /usr/local/bin/ovpn-ui
-    
-    # 创建符号链接到 /usr/bin/ 确保系统路径可找到
-    ln -sf /usr/local/bin/ovpn-ui /usr/bin/ovpn-ui
-    
-    log "管理命令安装完成: ovpn-ui"
+    if [ -f "$INSTALL_DIR/scripts/ovpn-ui.sh" ]; then
+        cp $INSTALL_DIR/scripts/ovpn-ui.sh /usr/local/bin/ovpn-ui
+        chmod +x /usr/local/bin/ovpn-ui
+        
+        # 创建符号链接到 /usr/bin/ 确保系统路径可找到
+        ln -sf /usr/local/bin/ovpn-ui /usr/bin/ovpn-ui
+        log "管理命令安装完成: ovpn-ui"
+    else
+        warning "管理脚本不存在，跳过安装"
+    fi
 }
 
 initialize_application() {
@@ -284,35 +302,35 @@ show_installation_complete() {
     fi
     
     echo ""
-    echo "🎉 OpenVPN WebUI 安装完成！"
+    echo "OpenVPN WebUI 安装完成！"
     echo ""
-    echo "📁 安装目录: $INSTALL_DIR"
-    echo "🛠️  管理命令: ovpn-ui"
+    echo "安装目录: $INSTALL_DIR"
+    echo "管理命令: ovpn-ui"
     echo ""
-    echo "🔧 安装配置:"
-    echo "   🌐 访问端口: ${WEB_PORT:-5000}"
-    echo "   👤 管理员: ${ADMIN_USER:-admin}"
-    echo "   📍 访问路径: ${ADMIN_PATH:-/admin}"
+    echo "安装配置:"
+    echo "  访问端口: ${WEB_PORT:-5000}"
+    echo "  管理员: ${ADMIN_USER:-admin}"
+    echo "  访问路径: ${ADMIN_PATH:-/admin}"
     echo ""
-    echo "🚀 使用方法:"
-    echo "   ovpn-ui start     # 启动服务"
-    echo "   ovpn-ui stop      # 停止服务" 
-    echo "   ovpn-ui status    # 查看状态"
-    echo "   ovpn-ui           # 显示管理菜单"
+    echo "使用方法:"
+    echo "  ovpn-ui start     # 启动服务"
+    echo "  ovpn-ui stop      # 停止服务" 
+    echo "  ovpn-ui status    # 查看状态"
+    echo "  ovpn-ui           # 显示管理菜单"
     echo ""
-    echo "🔐 访问地址: http://服务器IP:${WEB_PORT:-5000}${ADMIN_PATH:-/admin}"
-    echo "👤 登录信息: 用户名: ${ADMIN_USER:-admin} / 密码: [您设置的密码]"
+    echo "访问地址: http://服务器IP:${WEB_PORT:-5000}${ADMIN_PATH:-/admin}"
+    echo "登录信息: 用户名: ${ADMIN_USER:-admin} / 密码: [您设置的密码]"
     echo ""
-    echo "💡 提示: 使用 'ovpn-ui' 命令安装SSL证书启用HTTPS"
-    echo "📝 安装日志: $LOG_FILE"
+    echo "提示: 使用 'ovpn-ui' 命令安装SSL证书启用HTTPS"
+    echo "安装日志: $LOG_FILE"
     
     # 测试管理命令
     echo ""
-    echo "🔍 测试管理命令..."
+    echo "测试管理命令..."
     if command -v ovpn-ui >/dev/null 2>&1; then
-        echo "✅ 管理命令安装成功"
+        echo "管理命令安装成功"
     else
-        echo "❌ 管理命令未找到，请手动执行: /usr/local/bin/ovpn-ui"
+        echo "管理命令未找到，请手动执行: /usr/local/bin/ovpn-ui"
     fi
 }
 
@@ -324,6 +342,7 @@ main() {
     install_system_dependencies
     clone_repository
     setup_python_env
+    setup_scripts_permissions
     create_systemd_service
     create_management_command
     initialize_application
