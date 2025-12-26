@@ -99,6 +99,9 @@ install_system_dependencies() {
     elif command -v yum >/dev/null 2>&1; then
         yum install -y epel-release >> $LOG_FILE 2>&1
         yum install -y git curl wget python3 python3-pip openvpn sqlite openssl >> $LOG_FILE 2>&1
+    elif command -v dnf >/dev/null 2>&1; then
+        dnf install -y git curl wget python3 python3-pip python3-virtualenv \
+            openvpn sqlite openssl >> $LOG_FILE 2>&1
     else
         error "不支持的包管理器"
     fi
