@@ -227,8 +227,8 @@ create_admin_user() {
     # 使用与app.py完全一致的密码验证方式
     python3 << EOF
 import sqlite3
-import hashlib
 import os
+from werkzeug.security import generate_password_hash
 
 db_path = "/var/lib/ovpn-ui/webui.db"
 os.makedirs(os.path.dirname(db_path), exist_ok=True)
@@ -248,8 +248,7 @@ cursor.execute('''
 ''')
 
 # 使用与app.py完全相同的密码验证方式
-# app.py中使用的是明文比较，但为了安全我们使用相同的哈希方式
-password_hash = "$ADMIN_PASS"  # app.py中直接比较明文密码
+password_hash = generate_password_hash("$ADMIN_PASS")
 
 # 插入管理员账户
 cursor.execute('''

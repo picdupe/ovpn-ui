@@ -326,11 +326,11 @@ change_password() {
     source $INSTALL_DIR/venv/bin/activate
     python3 << EOF
 import sqlite3
-import hashlib
 import os
+from werkzeug.security import generate_password_hash
 
 db_path = "/var/lib/ovpn-ui/webui.db"
-password_hash = hashlib.sha256("$new_pass".encode()).hexdigest()
+password_hash = generate_password_hash("$new_pass")
 
 try:
     conn = sqlite3.connect(db_path)

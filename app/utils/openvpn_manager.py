@@ -198,7 +198,54 @@ class OpenVPNManager:
             if ip not in used_ips:
                 return ip
         
-        return 254  # 如果所有IP都用完了，返回最后一个
+        return False
+    
+    def change_password_direct(self, username: str, new_password: str) -> tuple[bool, str, str]:
+        """直接修改用户密码（不需要当前密码）"""
+        try:
+            auth_file = os.path.join(self.auth_dir, "users")
+            
+            if not os.path.exists(auth_file):
+                logger.error(f"认证文件不存在: {auth_file}")
+                return False, "", "认证文件不存在"
+            
+            # 读取现有用户文件
+            with open(auth_file, 'r') as f:
+                lines = f.readlines()
+            
+            # 更新密码
+            updated = False
+            new_lines = []
+            for line in lines:
+                if line.startswith(f"{username}:"):
+                    # 生成新密码哈希
+                    result = subprocess.run(
+                        ['openssl', 'passwd', '-1', new_password],
+                        capture_output=True, text=True, check=True
+                    )
+                    new_hash = result.stdout.strip()
+                    new_lines.append(f"{username}:{new_hash}\n")
+                    updated = True
+                else:
+                    new_lines.append(line)
+            
+            if updated:
+                # 写回文件
+                with open(auth_file, 'w') as f:
+                    f.writelines(new_lines)
+                
+                # 重新设置权限
+                os.chmod(auth_file, 0o600)
+                
+                logger.info(f"用户 {username} 密码修改成功")
+                return True, "密码修改成功", ""
+            else:
+                logger.warning(f"未找到用户 {username}")
+                return False, "", f"未找到用户 {username}"
+                
+        except Exception as e:
+            logger.error(f"修改密码失败: {e}")
+            return False, "", str(e)
     
     def get_user_list(self) -> List[str]:
         """获取所有OpenVPN用户列表"""

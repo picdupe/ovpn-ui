@@ -5,7 +5,7 @@ from werkzeug.security import generate_password_hash, check_password_hash
 import secrets
 import os
 import subprocess
-from datetime import datetime
+from datetime import datetime, timezone
 import logging
 
 # ==================== 应用初始化 ====================
@@ -102,89 +102,47 @@ def load_user(user_id):
 def init_db():
     with app.app_context():
         db.create_all()
-        # 默认管理员
-        admin_user = AdminUser.query.filter_by(username='admin').first()
+        # 检查是否存在管理员账户
+        admin_user = AdminUser.query.first()
         if not admin_user:
-            default_admin = AdminUser(
-                username='admin',
-                password_hash=generate_password_hash('admin123'),  # 加密
-                email='admin@example.com'
-            )
-            db.session.add(default_admin)
-            db.session.commit()
-            app.logger.info("创建默认管理员账户: admin/admin123")
-        app.logger.info("数据库初始化完成")
+            # 提示首次运行需要创建管理员账户
+            app.logger.info("首次运行：请使用 init_admin.py 脚本创建管理员账户")
+        else:
+            app.logger.info("数据库初始化完成，找到现有管理员账户")
 
 # ==================== OpenVPN 工具函数 ====================
+from utils.openvpn_manager import OpenVPNManager
+
+ovpn_manager = OpenVPNManager()
+
 def create_ovpn_user(username, password, max_devices=2):
     try:
-        script_path = f'{INSTALL_DIR}/scripts/create_ovpn_user.sh'
-        result = subprocess.run([script_path, username, password, str(max_devices)],
-                                capture_output=True, text=True, timeout=30)
-        return result.returncode == 0, result.stdout, result.stderr
+        success = ovpn_manager.create_user(username, password, max_devices)
+        if success:
+            return True, "用户创建成功", ""
+        else:
+            return False, "", "用户创建失败"
     except Exception as e:
         return False, '', str(e)
 
 def change_ovpn_password(username, new_password):
     try:
-        script_path = f'{INSTALL_DIR}/scripts/change_ovpn_password.sh'
-        result = subprocess.run([script_path, username, new_password],
-                                capture_output=True, text=True, timeout=30)
-        return result.returncode == 0, result.stdout, result.stderr
+        success, stdout, stderr = ovpn_manager.change_password_direct(username, new_password)
+        return success, stdout, stderr
     except Exception as e:
         return False, '', str(e)
+
+# ==================== 蓝图注册 ====================
+from routes.admin import admin_bp
+from routes.openvpn import openvpn_bp
+
+app.register_blueprint(admin_bp)
+app.register_blueprint(openvpn_bp)
 
 # ==================== 路由 ====================
 @app.route('/')
 def index():
     return redirect(url_for('user_login'))
-
-# ---------- 管理员路由 ----------
-@app.route('/admin/login', methods=['GET', 'POST'])
-def admin_login():
-    if request.method == 'POST':
-        username = request.json.get('username')
-        password = request.json.get('password')
-        user = AdminUser.query.filter_by(username=username).first()
-        if user and check_password_hash(user.password_hash, password):
-            login_user(user, remember=True)
-            return jsonify({'success': True})
-        return jsonify({'success': False, 'error': '用户名或密码错误'})
-    return render_template('admin/login.html')
-
-@app.route('/admin/logout')
-@login_required
-def admin_logout():
-    logout_user()
-    return redirect(url_for('admin_login'))
-
-@app.route('/admin/dashboard')
-@login_required
-def admin_dashboard():
-    if getattr(current_user, 'user_type', '') != 'admin':
-        return redirect(url_for('user_login'))
-    return render_template('admin/dashboard.html')
-
-@app.route('/admin/users')
-@login_required
-def admin_users():
-    if getattr(current_user, 'user_type', '') != 'admin':
-        return redirect(url_for('user_login'))
-    return render_template('admin/users.html')
-
-@app.route('/admin/openvpn')
-@login_required
-def admin_openvpn():
-    if getattr(current_user, 'user_type', '') != 'admin':
-        return redirect(url_for('user_login'))
-    return render_template('admin/openvpn.html')
-
-@app.route('/admin')
-@login_required
-def admin_index():
-    if getattr(current_user, 'user_type', '') != 'admin':
-        return redirect(url_for('user_login'))
-    return redirect(url_for('admin_dashboard'))
 
 # ---------- 用户路由 ----------
 @app.route('/register', methods=['GET', 'POST'])

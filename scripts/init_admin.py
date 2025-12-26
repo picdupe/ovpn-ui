@@ -4,10 +4,10 @@ OpenVPN WebUI 管理员初始化脚本
 """
 
 import sqlite3
-import hashlib
 import os
 import sys
 import secrets
+from werkzeug.security import generate_password_hash
 
 # 配置路径
 INSTALL_DIR = "/usr/local/ovpn-ui"
@@ -89,7 +89,7 @@ def init_database():
         # 创建默认管理员账户
         default_username = "admin"
         default_password = secrets.token_urlsafe(12)  # 生成随机密码
-        password_hash = hashlib.sha256(default_password.encode()).hexdigest()
+        password_hash = generate_password_hash(default_password)
         
         cursor.execute(
             "INSERT INTO admin_user (username, password_hash, email) VALUES (?, ?, ?)",

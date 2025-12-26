@@ -1,16 +1,72 @@
 from flask import Blueprint, render_template, jsonify, request
 from flask_login import login_required, current_user
-from app.models import NormalUser, db
+from app.models import NormalUser, db, AdminUser
+from werkzeug.security import check_password_hash
 from datetime import datetime
 
 admin_bp = Blueprint('admin', __name__, url_prefix='/admin')
 
+# 管理员登录路由
+@admin_bp.route('/login', methods=['GET', 'POST'])
+def admin_login():
+    if request.method == 'POST':
+        username = request.json.get('username')
+        password = request.json.get('password')
+        user = AdminUser.query.filter_by(username=username).first()
+        if user and check_password_hash(user.password_hash, password):
+            login_user(user, remember=True)
+            # 设置用户ID格式为 admin-<id>
+            from flask_login import login_user
+            login_user(user)
+            session['_user_id'] = f"admin-{user.id}"
+            return jsonify({'success': True})
+        return jsonify({'success': False, 'error': '用户名或密码错误'})
+    return render_template('admin/login.html')
+
+@admin_bp.route('/logout')
+@login_required
+def admin_logout():
+    logout_user()
+    return redirect(url_for('admin_login'))
+
+@admin_bp.route('/dashboard')
+@login_required
+def admin_dashboard():
+    if getattr(current_user, 'user_type', '') != 'admin':
+        return redirect(url_for('user_login'))
+    return render_template('admin/dashboard.html')
+
 @admin_bp.route('/users')
 @login_required
-def manage_users():
-    """用户管理页面"""
+def admin_users():
+    if getattr(current_user, 'user_type', '') != 'admin':
+        return redirect(url_for('user_login'))
     return render_template('admin/users.html')
 
+@admin_bp.route('/openvpn')
+@login_required
+def admin_openvpn():
+    if getattr(current_user, 'user_type', '') != 'admin':
+        return redirect(url_for('user_login'))
+    return render_template('admin/openvpn.html')
+
+@admin_bp.route('/', defaults={'path': ''})
+@admin_bp.route('/<path:path>')
+@login_required
+def admin_index(path):
+    if getattr(current_user, 'user_type', '') != 'admin':
+        return redirect(url_for('user_login'))
+    # 根据不同路径返回相应的模板
+    if path == '' or path == 'dashboard':
+        return render_template('admin/dashboard.html')
+    elif path == 'users':
+        return render_template('admin/users.html')
+    elif path == 'openvpn':
+        return render_template('admin/openvpn.html')
+    else:
+        return render_template('admin/dashboard.html')
+
+# 管理员API路由
 @admin_bp.route('/api/users')
 @login_required
 def get_users():
